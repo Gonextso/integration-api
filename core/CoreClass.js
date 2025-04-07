@@ -1,7 +1,7 @@
 import chalk from "chalk";
 import LogHelper from "../helpers/LogHelper.js";
 
-export default class Coreclass {
+export default class CoreClass {
     throws = (message) => {
         throw new Error(message);
     }

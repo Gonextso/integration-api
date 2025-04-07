@@ -1,7 +1,7 @@
 import HttpStatusCodes from "../enums/HttpStatusCodes.js";
-import Coreclass from "./CoreClass.js";
+import CoreClass from "./CoreClass.js";
 
-export default class CoreController extends Coreclass {
+export default class CoreController extends CoreClass {
     constructor() {
         super();
     }
