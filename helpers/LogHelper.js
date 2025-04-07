@@ -30,6 +30,8 @@ export default class LogHelper {
     }
 
     static error = (error) => {
+        error = new ApiServerError({ exception: error, ...error});
+
         console.log(chalk.red("[ Error ]"), this.#addRequestIdToMessage(), chalk.red(StringHelper.truncateString(JSON.stringify(error))));
     }
 

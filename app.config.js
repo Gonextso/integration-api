@@ -1,5 +1,6 @@
 export default {
     additionalBuilders: [
-        "/builders/database/mongooseBuilder.js"
+        "/builders/cache/{cache_builder_placeholder}.js",
+        "/builders/database/{database_builder_placeholder}.js"
     ]
 } //* you can remove additionalBuilders values if no need
