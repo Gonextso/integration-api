@@ -7,7 +7,7 @@ export default class CoreController extends CoreClass {
     }
 
     response = async (res, { content, headers, info, status, error } = { status: HttpStatusCodes.SUCCESS, content: {} }) => {
-        if (!res) throw new Error('res parameter needed');
+        if (!res || !status) throw new Error(`Check required parameters: res:${res}, status${status}`);
 
         const baseResponse = {
             statusCode: status.code,
