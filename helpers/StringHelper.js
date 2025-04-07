@@ -1,3 +1,5 @@
+import cyrpto from "crypto";
+
 export default class StringHelper {
   static truncateString = (str, maxLength = 1000) => {
     if (!str) return str;
