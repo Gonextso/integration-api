@@ -7,7 +7,9 @@
     "dotenv": "^16.4.7",
     "express": "^5.1.0",
     "helmet": "^8.1.0",
-    "morgan": "^1.10.0"
+    "mongoose": "^8.13.2",
+    "morgan": "^1.10.0",
+    "redis": "^4.7.0"
   },
   "name": "template-node-api",
   "version": "1.0.0",
