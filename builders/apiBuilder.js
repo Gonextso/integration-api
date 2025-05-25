@@ -5,8 +5,11 @@ import bodyParser from 'body-parser';
 import helmet from 'helmet';
 import ErrorController from '../controllers/ErrorController.js';
 import healthRouter  from '../routes/health.js' ;
+import shopifyNebimRouter from '../routes/shopifyNebimOrder.js'
+import developmentRouter from '../routes/development.js'
 import RequestMiddleware from '../middlewares/RequestMiddleware.js';
 import LogHelper from '../helpers/LogHelper.js';
+import ConfigMiddleware from '../middlewares/ConfigMiddleware.js';
 
 LogHelper.info2('Building Express API started');
 
@@ -42,6 +45,11 @@ app.use((_, res, next) => {
 app.use(RequestMiddleware.setTraceId);
 
 app.use(`${routePrefix}/health`, healthRouter);
+app.use(`${routePrefix}/shopify/nebim/order`,  ConfigMiddleware.setConfigViaCompanyId, shopifyNebimRouter);
+
+if (process.env.ENV === "dev") {
+    app.use(`${routePrefix}/dev`, developmentRouter);
+}
 
 app.use('/', ErrorController.notFound);
 app.use(ErrorController.internalServerError);
