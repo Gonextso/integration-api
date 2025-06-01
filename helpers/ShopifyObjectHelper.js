@@ -7,6 +7,7 @@ export default class ShopifyObjectHelper extends CoreClass {
 
     static getOrderList = (orderList) => {
         return orderList ? orderList.map(x => {
+            console.log(x.lineItems.nodes)
             return {
                 shopify_id: x.id,
                 order_id: x.name,

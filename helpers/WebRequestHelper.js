@@ -1,5 +1,6 @@
 import axios from "axios";
 import CoreClass from "../core/CoreClass.js";
+import StringHelper from "./StringHelper.js";
 
 export default class WebRequestHelper extends CoreClass {
     constructor() {
@@ -7,7 +8,7 @@ export default class WebRequestHelper extends CoreClass {
     }
 
     get = async (...args) => {
-        const id = this.generateUUID();
+        const id = StringHelper.generateUUID();
 
         this.logger.info4(`request_id:${id} - Request send to external system; HTTP/GET; ${args.map(x => typeof x === 'object' ? JSON.stringify(x.headers ? this.#removeSecrets(x.headers) : x) : x.toString()).join('; ')}`);
 
@@ -19,7 +20,7 @@ export default class WebRequestHelper extends CoreClass {
     }
 
     post = async (...args) => {
-        const id = this.generateUUID();
+        const id = StringHelper.generateUUID();
 
         this.logger.info4(`request_id:${id} - Request send to external system; HTTP/POST; ${args.map(x => typeof x === 'object' ? JSON.stringify(x.headers ? this.#removeSecrets(x.headers) : x) : x.toString()).join('; ')}`);
 
@@ -31,7 +32,7 @@ export default class WebRequestHelper extends CoreClass {
     }
 
     gpost = async (...args) => {
-        const id = this.generateUUID();
+        const id = StringHelper.generateUUID();
 
         this.logger.info4(`request_id:${id} - Request send to external system; HTTP/POST; ${args.map(x => typeof x === 'object' ? JSON.stringify(x.headers ? this.#removeSecrets(x.headers) : x).replace(/\\n/g, '').replace(/ /g, '') : x.toString()).join(' ; ')}`);
 

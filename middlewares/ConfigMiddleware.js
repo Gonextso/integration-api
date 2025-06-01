@@ -1,40 +1,46 @@
 import CoreController from "../core/CoreControler.js";
-import Company from "../models/db/Company.js"
+import Tenant from "../models/db/Tenant.js"
 import mongoose from "mongoose";
 import HttpStatusCodes from "../enums/HttpStatusCodes.js";
+import CyrptoHelper from "../helpers/CryptoHelper.js"
 
 export default new class ConfigMiddleware extends CoreController {
     constructor() {
         super();
     }
 
-    setConfigViaCompanyId = async (req, res, next) => {
-        const companyId = req.headers["x-company-id"] || req.get("x-company-id");
+    setConfigViaTenantId = async (req, res, next) => {
+        const tenantId = req.headers["x-tenant-id"] || req.get("x-tenant-id");
 
-        if (!companyId) {
+        if (!tenantId) {
             return this.response(res, {
                 status: HttpStatusCodes.BAD_REQUEST,
-                info: "'x-company-id' header is required.",
+                info: "'x-tenant-id' header is required.",
             });
         }
 
-        if (!mongoose.isValidObjectId(companyId)) {
+        if (!mongoose.isValidObjectId(tenantId)) {
             return this.response(res, {
                 status: HttpStatusCodes.BAD_REQUEST,
-                info: "Invalid company id format.",
+                info: "Invalid mongo object id format.",
             });
         }
 
-        const company = await Company.findById(companyId).lean();
+        const tenant = await Tenant.findById(tenantId)
+            .select('+shopify.apiKey.encryptedData')
+            .select('+shopify.apiKey.iv')
+            .select('+shopify.apiKey.authTag')
+            .lean();
 
-        if (!company) {
+        if (!tenant) {
             return this.response(res, {
                 status: HttpStatusCodes.NOT_FOUND,
-                info: "Company not found.",
+                info: "Tenant not found.",
             });
         }
 
-        req.company = company;
+        req.tenant = tenant;
+        req.tenant.shopify.decyrptedApiKey = CyrptoHelper.decrypt(tenant.shopify.apiKey);
 
         return next();
     }

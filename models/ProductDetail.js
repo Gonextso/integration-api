@@ -1,7 +1,7 @@
-import BaseModel from "../base/BaseModel.js";
+import CoreModel from "../core/CoreModel.js";
 import ProductDetailVariant from "./ProductDetailVariant.js";
 
-export default class ProductDetail extends BaseModel {
+export default class ProductDetail extends CoreModel {
     constructor(fields) {
         super({
             erp_id: "",

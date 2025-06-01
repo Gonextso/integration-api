@@ -2,6 +2,10 @@ import chalk from "chalk";
 import LogHelper from "../helpers/LogHelper.js";
 
 export default class CoreClass {
+    constructor(tenant) {
+        this.tenant = tenant;
+    }
+    
     throws = (message) => {
         throw new Error(message);
     }

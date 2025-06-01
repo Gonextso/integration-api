@@ -1,6 +1,6 @@
-import BaseModel from "../base/BaseModel.js";
+import CoreModel from "../core/CoreModel.js";
 
-export default class ProductDetailVariant extends BaseModel {
+export default class ProductDetailVariant extends CoreModel {
     constructor(fields) {
         super({
             barcode: "",

@@ -1,10 +1,12 @@
-import orderQueries from "../models/shopify/queries/order.js";
-import ShopifyObjectHelper from "../helpers/ShopifyObjectHelper.js";
-import ShopifyGqlAPI from "../apis/ShopifyGqlAPI.js";
+import orderQueries from "../../models/shopify/queries/order.js";
+import ShopifyObjectHelper from "../../helpers/ShopifyObjectHelper.js";
+import ShopifyGqlAPI from "../../apis/ShopifyGqlAPI.js";
+import CoreClass from "../../core/CoreClass.js";
 
-export default class ShopifyOrderBusiness {
-    constructor() {
-        this.api = new ShopifyGqlAPI()
+export default class ShopifyOrderBusiness extends CoreClass {
+    constructor(shopifyConfig) {
+        super();
+        this.api = new ShopifyGqlAPI(shopifyConfig);
     }
 
     getOrders = async (startDate, endDate) => {

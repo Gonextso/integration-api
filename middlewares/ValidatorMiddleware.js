@@ -39,12 +39,17 @@ export default new class ValidatorMiddleware extends CoreController {
                 return this.response(res, { status: HttpStatusCodes.BAD_REQUEST, info: "'startDate' cannot be after 'endDate'." });
             }
 
-            req.startDate = parsedStart;
-            req.endDate = parsedEnd;
+            req.startDate = parsedStart.toISOString();
+            req.endDate = parsedEnd.toISOString();
 
             return next();
         } catch (err) {
             return this.response(res, { status: HttpStatusCodes.BAD_REQUEST, info: err.message });
         }
+    }
+
+    isRequestBodyExists = async (req, res, next) => {
+        if (!req.body) return this.response(res, { status: HttpStatusCodes.BAD_REQUEST, info: "Request body is missing" });
+        return next();
     }
 }

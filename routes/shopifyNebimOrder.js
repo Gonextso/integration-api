@@ -4,6 +4,8 @@ import ValidatorMiddleware from "../middlewares/ValidatorMiddleware.js";
 
 const router = express.Router();
 
-router.get("/sync", ValidatorMiddleware.validateDatesFromQuery ,ShopifyNebimOrderController.sync);
+router.post("/sync", ValidatorMiddleware.validateDatesFromQuery, ShopifyNebimOrderController.sync);
+router.get("/sync_failed", ShopifyNebimOrderController.getSyncFailedOrders);
+router.post("/sync_failed", ValidatorMiddleware.isRequestBodyExists, ShopifyNebimOrderController.syncFailedOrders);
 
 export default router;

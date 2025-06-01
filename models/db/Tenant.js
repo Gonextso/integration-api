@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
 
-export default mongoose.model('Company', new mongoose.Schema({
+export default mongoose.model('Tenant', new mongoose.Schema({
     name: { type: String, required: true },
     apiKey: { type: String, unique: true, required: true, select: false  },
     salesUrl: String,
@@ -55,4 +55,5 @@ export default mongoose.model('Company', new mongoose.Schema({
         isActive: { type: Boolean, default: true },
     },
     isActive: { type: Boolean, default: true },
+    isTestStore: { type: Boolean, default: false }
 }));
