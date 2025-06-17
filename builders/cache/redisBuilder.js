@@ -3,7 +3,9 @@ import LogHelper from '../../helpers/LogHelper.js';
 import ClientProvider from '../../cache/ClientProvider.js';
 import CacheDatabases from '../../enums/CacheDatabases.js';
 
-LogHelper.info2('Building redis started');
+const logger = new LogHelper();
+
+logger.info2('Building redis started');
 
 ClientProvider.systemClient = redis.createClient({
     url: process.env.REDIS_URI,
@@ -22,20 +24,20 @@ ClientProvider.shopifyClient = redis.createClient({
 
 
 ClientProvider.systemClient.on('error', (err) => {
-    LogHelper.error('Redis system client error:', err);
+    logger.error('Redis System Client error:', err);
     process.exit(1);
 });
 
 ClientProvider.nebimClient.on('error', (err) => {
-    LogHelper.error('Redis nebim client error:', err);
+    logger.error('Redis Nebim Client error:', err);
     process.exit(1);
 });
 
 ClientProvider.shopifyClient.on('error', (err) => {
-    LogHelper.error('Redis shopify client error:', err);
+    logger.error('Redis Shopify Client error:', err);
     process.exit(1);
 });
 
-ClientProvider.systemClient.connect().then(() => LogHelper.info4('Redis system client Connected')); 
-ClientProvider.nebimClient.connect().then(() => LogHelper.info4('Redis nebim client Connected')); 
-ClientProvider.shopifyClient.connect().then(() => LogHelper.info4('Redis shopify client Connected')); 
+ClientProvider.systemClient.connect().then(_ => logger.info4('Redis System Client Connected')); 
+ClientProvider.nebimClient.connect().then(_ => logger.info4('Redis Nebim Client Connected')); 
+ClientProvider.shopifyClient.connect().then(_ => logger.info4('Redis Shopify Client Connected')); 

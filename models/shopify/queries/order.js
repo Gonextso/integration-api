@@ -42,8 +42,10 @@ query Orders($cursor: String) {
                         id
                         originalUnitPrice
                         quantity
+                        refundableQuantity
                         sku
                         totalDiscount
+                        nonFulfillableQuantity
                         variant {
                             barcode
                         }

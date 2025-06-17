@@ -1,6 +1,7 @@
 import CoreClass from "../../core/CoreClass.js";
 import NebimV3IntegratorAPI from "../../apis/NebimV3IntegratorAPI.js";
 import NebimCache from "../../cache/NebimCache.js";
+import NebimObjectHelper from "../../helpers/NebimObjectHelper.js";
 
 export default class NebimCustomerClass extends CoreClass {
     constructor(tenant) {
@@ -59,6 +60,7 @@ export default class NebimCustomerClass extends CoreClass {
             OfficeCode: this.tenant.nebim.order.office,
             DataLanguageCode: "TR",
             IdentityNum: "11111111111",
+            AccountOpeningDate: new Date().toISOString(),
             PostalAddresses: [!is_receiver_not_customer ? customerNebimAddress : { AddressTypeCode: this.tenant.nebim.customer.addressType }],
             Communications: [
                 {
@@ -77,7 +79,7 @@ export default class NebimCustomerClass extends CoreClass {
                 IsBlocked: false,
                 IsAuthorized: true
             }: null].filter(x => x)
-        };
+        }
 
         let nebimCustomer = await this.api.post(base);
 
@@ -87,7 +89,7 @@ export default class NebimCustomerClass extends CoreClass {
 
         return {
             CustomerCode: nebimCustomer.CurrAccCode,
-            ShippingPostalAddressID: is_receiver_not_customer ? nebimCustomer.PostalAddressesWithContacts.filter(x => x.AddressTypeCode === "2")[0].PostalAddressID : nebimCustomer.PostalAddresses[0].PostalAddressID
+            ShippingPostalAddressID: is_receiver_not_customer ? nebimCustomer.PostalAddressesWithContacts.filter(x => x.AddressTypeCode == this.tenant.nebim.customer.addressType)[0].PostalAddressID : nebimCustomer.PostalAddresses[0].PostalAddressID
         };
     }
 
@@ -113,7 +115,7 @@ export default class NebimCustomerClass extends CoreClass {
         if (is_receiver_not_customer) {
             const isContactExists = nebimCustomer.Contacts.some(x => x.FirstName === address.FirstName && x.LastName === address.LastName);
 
-            if (!isContactExists) {
+            if (isContactExists) {
                 nebimCustomer = await this.#addContactAddress(nebimCustomer, nebimCustomer.Contacts.filter(x => x.FirstName === address.FirstName && x.LastName === address.LastName)[0].ContactID, customerNebimAddress, address.phone);
             } else {
                 //TODO: Implement new incoming contact
@@ -121,8 +123,6 @@ export default class NebimCustomerClass extends CoreClass {
         } else {
             nebimCustomer = await this.#addCustomerAddress(nebimCustomer, customerNebimAddress)
         }
-
-        console.log(nebimCustomer.PostalAddresses, address)
 
         return {
             CustomerCode: nebimCustomer.CurrAccCode,

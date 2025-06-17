@@ -1,4 +1,5 @@
 import CoreClass from "../core/CoreClass.js";
+import SystemCodes from "../enums/SystemCodes.js";
 
 export default class ShopifyObjectHelper extends CoreClass {
     constructor() {
@@ -7,7 +8,6 @@ export default class ShopifyObjectHelper extends CoreClass {
 
     static getOrderList = (orderList) => {
         return orderList ? orderList.map(x => {
-            console.log(x.lineItems.nodes)
             return {
                 shopify_id: x.id,
                 order_id: x.name,
@@ -35,12 +35,14 @@ export default class ShopifyObjectHelper extends CoreClass {
                     ...x.lineItems.nodes.map(x => ({
                         sku: x.sku,
                         barcode: x.variant?.barcode,
-                        quantity: x.quantity,
+                        quantity: x.refundableQuantity,
+                        remaining_quantity: x.nonFulfillableQuantity,
                         line_discount: Number(x.totalDiscount ?? 0),
                         price: Number(x.originalUnitPrice)
                     }))
                 ],
-                tags: x.tags
+                tags: x.tags,
+                platform: SystemCodes.ECOMMERCE.SHOPIFY
             }
         }) : []
     }

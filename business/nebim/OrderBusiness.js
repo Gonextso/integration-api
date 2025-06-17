@@ -6,6 +6,8 @@ import SystemHelper from "../../helpers/SystemHelper.js";
 import NebimCustomerBusiness from "./CustomerBusiness.js";
 import NebimObjectHelper from "../../helpers/NebimObjectHelper.js";
 import FailedOrder from "../../models/db/FailedOrder.js";
+import SystemCodes from "../../enums/SystemCodes.js";
+import SuccessOrder from "../../models/db/SuccessOrder.js";
 
 export default class NebimOrderBusiness extends CoreClass {
     constructor(tenant) {
@@ -30,14 +32,25 @@ export default class NebimOrderBusiness extends CoreClass {
     createOrders = async (orderList, dontSkipFailedOrders = false) => {
         const promises = [];
         let skippedFailedOrderCount = 0;
+        let skippedAlreadySyncedOrders = 0;
 
-        for (const order of orderList) {
-            const isFailedOrderExists = Boolean(await FailedOrder.findOne({ ecommerceId: order.order_id }));
+        for (const order of orderList.filter(x => !x.is_cancelled)) {
+            const isFailedOrderExists = Boolean(await FailedOrder.findOne({ ecommerceId: order.order_id, isCancelled: false }));
+
+            const isOrderSynced = Boolean(
+                await SuccessOrder.findOne({ ecommerceId: order.order_id, tenant: this.tenant._id, ecommerce: order.platform, erp: SystemCodes.ERP.V3_INTEGRATOR, isCancelled: false })
+            );
+
+            if (isOrderSynced) {
+                skippedAlreadySyncedOrders++
+                continue;
+            }
             
             if (isFailedOrderExists && !dontSkipFailedOrders) {
                 skippedFailedOrderCount++
                 continue;
             }
+            
 
             const transaction = `${CacheFields.SYSTEM.SYNC_ORDER_LOCK}:${order.order_id}`;
             let customer = {};
@@ -48,11 +61,12 @@ export default class NebimOrderBusiness extends CoreClass {
                 try {
                     customer = await this.customerBusiness.syncCustomerFromOrder(order);
                 } catch (error) {
-                    this.logger.error(new Error(`Error on transactionId:${transaction} - ${error.message}`));
+                    const reason = `Error on transactionId:${transaction} - msg:${error.message} - stack:${error.stack}`;
+                    this.logger.error(new Error(reason));
     
                     return {
                         ok: false,
-                        reason: error.message,
+                        reason: reason,
                         ecommerceId: order.order_id,
                         knownFailedStep: "sync_customer",
                         orderData: order
@@ -67,18 +81,23 @@ export default class NebimOrderBusiness extends CoreClass {
                     return {
                         ok: true,
                         erpId: orderNumber,
-                        ecommerceId: order.order_id
-                    };
+                        ecommerceId: order.order_id,
+                        lines: orderResponse.Lines.map(x => ({ erpLineId: x.LineID, quantity: x.Qty1, barcode: x.UsedBarcode, amount: x.LineAmount })),
+                        partiallyCancelledLines: order.lines.filter(x => x.remaining_quantity).map(x => ({ barcode: x.barcode, quantity: x.remaining_quantity })),
+                        isCancelled: false,
+                        isPartiallyCancelled: order.lines.some(x => x.remaining_quantity)
+                    }; //TODO: fix partially cancelled business. not send lines accepts as canceled needs to be considered
 
                 } catch (error) {
-                    this.logger.error(new Error(`Error on transactionId:${transaction} - ${error.message}`));
-    
+                    const reason = `Error on transactionId:${transaction} - msg:${error.message} - stack:${error.stack}`;
+                    this.logger.error(new Error(reason));
+
                     return {
                         ok: false,
                         orderData: order,
-                        reason: error.message,
+                        reason: reason,
                         ecommerceId: order.order_id,
-                        knownFailedStep: "sync_order"
+                        knownFailedStep: "sync_order" //TODO: make it enum
                     }
                 }
             }));
@@ -97,14 +116,115 @@ export default class NebimOrderBusiness extends CoreClass {
             this.logger.info2(`Skipped ${skippedFailedOrderCount} failed orders`);
         }
 
+        if (skippedAlreadySyncedOrders) {
+            this.logger.info2(`Skipped ${skippedAlreadySyncedOrders} already synced orders`);
+        }
+
         return {
             skippedFailedOrderCount,
+            skippedAlreadySyncedOrders,
             successOrders,
             failedOrders
         }
     }
 
+    cancelOrders = async (orderList, dontSkipFailedOrders = false) => {
+        const promises = [];
+        let skippedFailedOrderCount = 0;
+        let skippedAlreadySyncedOrders = 0;
+        let skippedNotSyncedCancelOrders = 0;
+
+        for (const order of orderList.filter(x => x.is_cancelled)) {
+            const isFailedOrderExists = Boolean(await FailedOrder.findOne({ ecommerceId: order.order_id, isCancelled: true }));
+
+            const createdOrder = Boolean(
+                await SuccessOrder.findOne({ ecommerceId: order.order_id, tenant: this.tenant._id, ecommerce: order.platform, erp: SystemCodes.ERP.V3_INTEGRATOR })
+            );
+
+            if (!createdOrder) {
+                skippedNotSyncedCancelOrders++
+                continue;
+            }
+            
+            if (createdOrder.isCancelled) {
+                skippedAlreadySyncedOrders++
+                continue;
+            }
+            
+            if (isFailedOrderExists && !dontSkipFailedOrders) {
+                skippedFailedOrderCount++
+                continue;
+            }
+
+            const transaction = `${CacheFields.SYSTEM.SYNC_CANCEL_ORDER_LOCK}:${order.order_id}`;
+
+            promises.push(SystemHelper.createTransaction(this.tenant, transaction, async () => {
+                let orderNumber = "";
+
+                try {
+                    const cancelOrderResponse = await this.#cancelOrder(order);
+
+                    orderNumber = cancelOrderResponse.OrderNumber;
+
+                    return {
+                        ok: true,
+                        erpId: orderNumber,
+                        ecommerceId: order.order_id,
+                        lines: orderResponse.Lines.map(x => ({ erpLineId: x.LineID, quantity: x.Qty1, barcode: x.UsedBarcode, amount: x.LineAmount })),
+                        isCancelled: true
+                    };
+    
+                } catch (error) {
+                    const reason = `Error on transactionId:${transaction} - msg:${error.message} - stack:${error.stack}`;
+                    this.logger.error(new Error(reason));
+    
+                    return {
+                        ok: false,
+                        orderData: order,
+                        reason: reason,
+                        ecommerceId: order.order_id,
+                        knownFailedStep: "sync_cancel_order" //TODO: make it enum
+                    }
+                }
+            }));
+        }
+
+        const settled = await Promise.allSettled(promises);
+
+        const successOrders = settled
+            .filter(r => r.status === 'fulfilled' && r.value && r.value.ok)
+            .map(r => r.value);
+        const failedOrders  = settled
+            .filter(r => r.status === 'fulfilled' && r.value && !r.value.ok)
+            .map(r => r.value);
+
+        if (skippedFailedOrderCount) {
+            this.logger.info2(`Skipped ${skippedFailedOrderCount} failed cancel orders`);
+        }
+
+        if (skippedAlreadySyncedOrders) {
+            this.logger.info2(`Skipped ${skippedAlreadySyncedOrders} already synced cancel orders`);
+        }
+
+        if (skippedNotSyncedCancelOrders) {
+            this.logger.info2(`Skipped ${skippedNotSyncedCancelOrders} not synced cancel orders`);
+        }
+
+        return {
+            skippedFailedOrderCount,
+            skippedAlreadySyncedOrders,
+            skippedNotSyncedCancelOrders,
+            successOrders,
+            failedOrders
+        }
+    }
+        
+
     #createOrder = async (order, nebimCustomer) => {
         return this.api.post(NebimObjectHelper.toNebimOrder(this.tenant, order, nebimCustomer), { "IdemPotent-Key": order.order_id });
+    }
+
+    #cancelOrder = async order => {
+        return this.api.post(NebimObjectHelper.toNebimCancelOrder(this.tenant, order), { "IdemPotent-Key": `cancel-${order.order_id}` });
     }
 }

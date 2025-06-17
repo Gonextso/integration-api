@@ -4,6 +4,7 @@ import LogHelper from "../helpers/LogHelper.js";
 export default class CoreClass {
     constructor(tenant) {
         this.tenant = tenant;
+        this.logger = new LogHelper(tenant);
     }
     
     throws = (message) => {
@@ -16,5 +17,5 @@ export default class CoreClass {
         process.exit(1);
     }
 
-    logger = LogHelper
+    logger = null;
 }

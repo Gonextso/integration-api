@@ -23,13 +23,13 @@ export default mongoose.model('Tenant', new mongoose.Schema({
         host: String,
         user: String,
         userGroup: String,
-        password: String,
+        password: String, //TODO: make encyrption
         product: {
             categoryKeysFrom: { type: [String], default: [] }
         },
         customer: {
-            phoneType: Number,
-            addressType: Number
+            phoneType: String,
+            addressType: String
         },
         order: {
             deliveryCompany: String,
@@ -37,7 +37,8 @@ export default mongoose.model('Tenant', new mongoose.Schema({
             creditCardType: String,
             office: String,
             store: String,
-            warehouse: String
+            warehouse: String,
+            cancelReason: String
         },
         procNames: {
             product: {

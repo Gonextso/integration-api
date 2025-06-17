@@ -1,10 +1,12 @@
 import axios from "axios";
 import CoreClass from "../core/CoreClass.js";
 import StringHelper from "./StringHelper.js";
+import RequestLog from "../models/db/RequestLog.js";
 
 export default class WebRequestHelper extends CoreClass {
-    constructor() {
-        super();
+    constructor(tenant) {
+        super(tenant);
+        this.tenant = tenant;
     }
 
     get = async (...args) => {
@@ -16,7 +18,7 @@ export default class WebRequestHelper extends CoreClass {
             this.logger.info3(`request_id:${id} - Response from external system; status ${response.status}; ${JSON.stringify(response.data)}`);
 
             return response;
-        }), id);
+        }), id, ...args);
     }
 
     post = async (...args) => {
@@ -28,7 +30,7 @@ export default class WebRequestHelper extends CoreClass {
             this.logger.info3(`request_id:${id} - Response from external system; status ${response.status}; ${JSON.stringify(response.data)}`);
 
             return response;
-        }), id);
+        }), id, ...args);
     }
 
     gpost = async (...args) => {
@@ -40,12 +42,12 @@ export default class WebRequestHelper extends CoreClass {
             this.logger.info3(`request_id:${id} - Response recieved from external system; status ${response.status}; ${JSON.stringify(response.data)}`);
 
             return response;
-        }), id);
+        }), id, ...args);
     }
 
     #removeSecrets = (object) => {
         const headers = JSON.parse(JSON.stringify(object));
-        Object.keys(headers).map(x => x.toLowerCase().includes('token') ? headers[x] = "masked_by_gonextso" : headers[x])
+        Object.keys(headers).map(x => x.toLowerCase().includes('token') ? headers[x] = "masked_by_gonextso" : null)
 
         return headers;
     }
@@ -55,13 +57,51 @@ export default class WebRequestHelper extends CoreClass {
         return seconds * 1e3 + nanoseconds / 1e6;; 
     }
 
-    #trackRequest = (method, id) => {
+    #extractMethodType = (method) => {
+        if(method.toLowerCase().includes('axios.get')) return 'GET';
+        if(method.toLowerCase().includes('axios.post')) return 'POST';
+        if(method.toLowerCase().includes('axios.put')) return 'PUT';
+        if(method.toLowerCase().includes('axios.delete')) return 'DELETE';
+        if(method.toLowerCase().includes('axios.patch')) return 'PATCH';
+
+        return 'NO_METHOD_FOUND';
+    }
+
+    #trackRequest = (method, id, ...args) => {
         const start = process.hrtime();
 
-        return method().then(result => {
-            this.logger.info3(`request_id:${id} - Processed in ${this.#getEndTime(start).toFixed(2)} ms`);
-
-            return result;
+        const log = RequestLog({
+            tenant: this.tenant._id,
+            requestId: id,
+            method: this.#extractMethodType(method.toString()),
+            status: 0,
+            responseTime: 0,
+            response: null,
+            url: args[0],
+            headers: JSON.stringify(this.#removeSecrets(args[2].headers)),
+            body: JSON.stringify(args[1])
         })
+
+        return method()
+            .then(result => {
+                this.logger.info3(`request_id:${id} - Processed in ${this.#getEndTime(start).toFixed(2)} ms`);
+            
+                log.status = result.status;
+                log.responseTime = this.#getEndTime(start).toFixed(2);
+                log.response = JSON.stringify(result.data);
+
+                return result;
+            })
+            .catch(error => {
+
+                log.status = result.status;
+                log.responseTime = this.#getEndTime(start).toFixed(2);
+                log.response = JSON.stringify(result.data);
+
+                throw error;
+            })
+            .finally(_ => {
+                log.save() //TODO: can be closed via interaction for success logs. nebim returns 200 anytime
+            })
     }
 }

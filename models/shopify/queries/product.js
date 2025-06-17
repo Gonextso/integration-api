@@ -87,5 +87,19 @@ query Taxonomy {
         }
     }
 }
+`,
+    barcodesBySkus: `
+query FetchVariantBarcodes($after: String) {
+    productVariants(
+      first: 250
+      after: $after
+      query: "@skus_placeholder"
+    ) {
+      pageInfo { hasNextPage endCursor }
+      edges {
+        node { id sku barcode }
+      }
+    }
+  }
 `
 }

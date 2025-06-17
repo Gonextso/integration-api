@@ -28,8 +28,8 @@ export default class CoreCache extends CoreClass {
         return value;
     }
 
-    getAll = async _ => {
-        return this.redis.getAllCache(this.tenant.name);
+    getAll = async key => {
+        return this.redis.getAllCache(key ? `${this.tenant.name}:${key}` : this.tenant.name);
     }
 
     delete = async key => {

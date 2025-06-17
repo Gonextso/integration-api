@@ -1,19 +1,19 @@
 import mongoose from "mongoose";
-import SystemCodes from "../../enums/SystemCodes.js"
+import SystemCodes from "../../enums/SystemCodes.js";
 
-export default mongoose.model('OrderSyncLog', new mongoose.Schema({
+export default mongoose.model('OrderSyncBatch', new mongoose.Schema({
     request: {
         startDate: String,
         endDate: String,
     },
-    successList: [{
-        erpId: String,
-        ecommerceId: String
-    }],
+    successList: [String],
     failedList: [String],
     isErrorLogExistsForThisBatch: Boolean,
     totalFetchedOrderCount: Number,
-    skippedOrderCount: Number,
+    skippedFailedOrderCount: Number,
+    skippedAlreadySyncedOrderCount: Number,
+    cancelledOrderCount: Number,
+    skippedNotSyncedCancelOrders: Number,
     process: { type: String, required: true, enum: Object.keys(SystemCodes.PROCESS)  },
     erp: { type: String, required: true, enum: Object.keys(SystemCodes.ERP)  },
     ecommerce: { type: String, required: true, enum: Object.keys(SystemCodes.ECOMMERCE) },

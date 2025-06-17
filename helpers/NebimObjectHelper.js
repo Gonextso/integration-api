@@ -62,42 +62,57 @@ export default class NebimObjectHelper extends CoreClass {
         quantity: x.Inventory > 0 ? x.Inventory : 0
     }));
 
-    static toNebimOrder = (tenant, order, customer) => {
-        return {
-            ModelType: 6,
-            ...customer,
-            PosTerminalID: tenant.nebim.order.posTerminalId,
-            OfficeCode: tenant.nebim.order.office,
-            StoreCode: tenant.nebim.order.store,
-            StoreWarehouseCode: tenant.nebim.order.warehouse,
-            OrderDate: order.order_date,
-            DocumentNumber: order.order_id,
-            Description: `shopifyId_${order.shopify_id}${order.tags ? '; tags: ' : ''}${order.tags.join(', ')}`,
-            DeliveryCompanyCode: tenant.nebim.order.deliveryCompanyCode,
-            ShipmentMethodCode: 2,
-            IsCompleted: true,
-            IsSalesViaInternet: true,
-            OrdersViaInternetInfo: {
-                SalesUrl: tenant.salesUrl,
-                PaymentTypeCode: 1,
-                PaymentTypeDescription: "KREDIKARTI/BANKAKARTI",
-                PaymentAgent: "",
-                PaymentDate: order.order_date,
-                SendDate: order.order_date
-            },
-            Lines: order.lines.map(x => ({
-                UsedBarcode: x.barcode,
-                PriceVI: x.price,
-                Qty1: x.quantity,
-                LDiscount4: x.line_discount
-            })),
-            Payments: [{
-                PaymentType: 2,
-                CreditCardTypeCode: tenant.nebim.order.creditCardType,
-                CurrencyCode: "TRY", //TODO: add multi currency support
-                InstallmentCount: 1,
-                Amount: order.payment
-            }]
-        }
-    } 
+    static toNebimOrder = (tenant, order, customer) => ({
+        ModelType: 6,
+        ...customer,
+        PosTerminalID: tenant.nebim.order.posTerminalId,
+        OfficeCode: tenant.nebim.order.office,
+        StoreCode: tenant.nebim.order.store,
+        StoreWarehouseCode: tenant.nebim.order.warehouse,
+        OrderDate: order.order_date,
+        DocumentNumber: order.order_id,
+        Description: `shopifyId_${order.shopify_id}${order.tags ? '; tags: ' : ''}${order.tags.join(', ')}`,
+        DeliveryCompanyCode: tenant.nebim.order.deliveryCompanyCode,
+        ShipmentMethodCode: 2,
+        IsCompleted: true,
+        IsSalesViaInternet: true,
+        OrdersViaInternetInfo: {
+            SalesUrl: tenant.salesUrl,
+            PaymentTypeCode: 1,
+            PaymentTypeDescription: "KREDIKARTI/BANKAKARTI",
+            PaymentAgent: "",
+            PaymentDate: order.order_date,
+            SendDate: order.order_date
+        },
+        Lines: order.lines.map(x => ({
+            UsedBarcode: x.barcode,
+            PriceVI: x.price,
+            Qty1: x.quantity,
+            LDiscount4: x.line_discount
+        })),
+        Payments: [{
+            PaymentType: 2,
+            CreditCardTypeCode: tenant.nebim.order.creditCardType,
+            CurrencyCode: "TRY", //TODO: add multi currency support
+            InstallmentCount: 1,
+            Amount: order.payment
+        }]
+    })
+
+    static toNebimCancelOrder = (tenant, order) => ({
+        ModelType: 34,
+        OrderNumber: order.erpId,
+        Lines: order.lines.map(x => ({
+            LineID: x.erpLineId,
+            Qty1: x.quantity,
+            OrderCancelReasonCode: tenant.nebim.order.cancelReason
+        })),
+        Payments: [{
+            PaymentType: 2,
+            CreditCardTypeCode: tenant.nebim.order.creditCardType,
+            CurrencyCode: "TRY", //TODO: add multi currency support
+            InstallmentCount: 1,
+            Amount: order.payment //TODO: calculate total amount of lines
+        }]
+    })
 }

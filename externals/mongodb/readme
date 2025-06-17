@@ -1,0 +1,10 @@
+## Before run mongo db container set :
+
+MONGO_INITDB_ROOT_USERNAME
+MONGO_INITDB_ROOT_PASSWORD
+
+## Authenticate from terminal
+
+```shell
+mongosh -u <username> -p <password>
+```

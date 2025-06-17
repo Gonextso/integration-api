@@ -1,12 +1,12 @@
 export default {
     SYSTEM: {
-        SYNC_ORDER_LOCK: "SyncLockOrders"
+        SYNC_ORDER_LOCK: "SyncLockOrders",
+        SYNC_CANCEL_ORDER_LOCK: "SyncCancelLockOrders"
     },
     NEBIM: {
         ADDRESS_CODES: 'AddressCodes'
     },
     SHOPIFY: {
-        LAST_SUCCESS_ORDER_DATE: 'LastSuccessOrderDate',
-        API_KEY: 'apiKey'
+        SKU: 'SKU'
     }
 }

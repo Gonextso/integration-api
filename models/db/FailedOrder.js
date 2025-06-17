@@ -2,10 +2,11 @@ import mongoose from "mongoose";
 import SystemCodes from "../../enums/SystemCodes.js"
 
 export default mongoose.model('FailedOrder', new mongoose.Schema({
-    ecommerceId: { type: String, required: true, unique: true },
+    ecommerceId: { type: String, required: true, index: true },
     orderData: Object,
     reason: String,
     knownFailedStep: String,
+    isCancelled: { type: Boolean, default: false, index: true },
     erp: { type: String, required: true, enum: Object.keys(SystemCodes.ERP)  },
     ecommerce: { type: String, required: true, enum: Object.keys(SystemCodes.ECOMMERCE) },
     tenant: { type: mongoose.Schema.Types.ObjectId, ref: 'Tenant', required: true },

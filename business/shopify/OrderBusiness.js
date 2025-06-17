@@ -4,11 +4,12 @@ import ShopifyGqlAPI from "../../apis/ShopifyGqlAPI.js";
 import CoreClass from "../../core/CoreClass.js";
 
 export default class ShopifyOrderBusiness extends CoreClass {
-    constructor(shopifyConfig) {
-        super();
-        this.api = new ShopifyGqlAPI(shopifyConfig);
+    constructor(tenant) {
+        super(tenant);
+        this.api = new ShopifyGqlAPI(tenant);
     }
 
+    //TODO: 1002 siparişi neden geliyor incele iade edilmiş
     getOrders = async (startDate, endDate) => {
         const query = orderQueries.openOrders;
 
