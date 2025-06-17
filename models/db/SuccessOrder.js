@@ -21,5 +21,6 @@ export default mongoose.model('SuccessOrder', new mongoose.Schema({
     ecommerce: { type: String, required: true, enum: Object.keys(SystemCodes.ECOMMERCE) },
     tenant: { type: mongoose.Schema.Types.ObjectId, ref: 'Tenant', required: true },
     syncBatchId: { type: mongoose.Schema.Types.ObjectId, ref: 'OrderSyncLog', required: true },
+    traceId: { type: String, index: true, required: true },
     createdAt: { type: Date, default: Date.now },
 }));

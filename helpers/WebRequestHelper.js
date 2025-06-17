@@ -2,6 +2,7 @@ import axios from "axios";
 import CoreClass from "../core/CoreClass.js";
 import StringHelper from "./StringHelper.js";
 import RequestLog from "../models/db/RequestLog.js";
+import CLSHelper from "./CLSHelper.js";
 
 export default class WebRequestHelper extends CoreClass {
     constructor(tenant) {
@@ -73,6 +74,7 @@ export default class WebRequestHelper extends CoreClass {
         const log = RequestLog({
             tenant: this.tenant._id,
             requestId: id,
+            traceId: CLSHelper.get('traceId'),
             method: this.#extractMethodType(method.toString()),
             status: 0,
             responseTime: 0,

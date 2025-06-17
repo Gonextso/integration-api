@@ -99,10 +99,10 @@ export default class NebimObjectHelper extends CoreClass {
         }]
     })
 
-    static toNebimCancelOrder = (tenant, order) => ({
+    static toNebimCancelOrder = (tenant, createdOrder) => ({
         ModelType: 34,
-        OrderNumber: order.erpId,
-        Lines: order.lines.map(x => ({
+        OrderNumber: createdOrder.erpId,
+        Lines: createdOrder.lines.map(x => ({
             LineID: x.erpLineId,
             Qty1: x.quantity,
             OrderCancelReasonCode: tenant.nebim.order.cancelReason
@@ -112,7 +112,7 @@ export default class NebimObjectHelper extends CoreClass {
             CreditCardTypeCode: tenant.nebim.order.creditCardType,
             CurrencyCode: "TRY", //TODO: add multi currency support
             InstallmentCount: 1,
-            Amount: order.payment //TODO: calculate total amount of lines
+            Amount: createdOrder.lines.reduce((sum, line) => sum + (line.amount), 0) ?? 0
         }]
     })
 }

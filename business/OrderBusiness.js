@@ -32,6 +32,7 @@ export default class OrderBusiness extends CoreClass {
             ecommerce: SystemCodes.ECOMMERCE.SHOPIFY,
             process: SystemCodes.PROCESS.SYNC_ORDERS,
             tenant: this.tenant._id,
+            traceId: this.traceId,
             successList: craeteOrderResults.successOrders.map(x => (x.ecommerceId)),
             failedList: craeteOrderResults.failedOrders.map(x => (x.ecommerceId)),
             isErrorLogExistsForThisBatch: craeteOrderResults.failedOrders.length > 0,
@@ -48,10 +49,11 @@ export default class OrderBusiness extends CoreClass {
                     ecommerce: SystemCodes.ECOMMERCE.SHOPIFY,
                     erp: SystemCodes.ERP.V3_INTEGRATOR,
                     tenant: this.tenant._id,
+                    traceId: this.traceId,
                     orderData: failedOrder.orderData,
                     syncBatchId: orderSyncBatch._id,
                     reason: failedOrder.reason,
-                    knownFailedStep: failedOrder.knownFailedStep
+                    process: failedOrder.process
                 });
                    
                 failedOrderDoc.save();
@@ -65,6 +67,7 @@ export default class OrderBusiness extends CoreClass {
                     ecommerce: SystemCodes.ECOMMERCE.SHOPIFY,
                     erp: SystemCodes.ERP.V3_INTEGRATOR,
                     tenant: this.tenant._id,
+                    traceId: this.traceId,
                     syncBatchId: orderSyncBatch._id,
                     ecommerceId: successOrder.ecommerceId,
                     lines: successOrder.lines,
@@ -88,10 +91,11 @@ export default class OrderBusiness extends CoreClass {
                     erpId: failedOrder.erpId,
                     ecommerce: SystemCodes.ECOMMERCE.SHOPIFY,
                     tenant: this.tenant._id,
+                    traceId: this.traceId,
                     orderData: failedOrder.orderData,
                     syncBatchId: orderSyncBatch._id,
                     reason: failedOrder.reason,
-                    knownFailedStep: failedOrder.knownFailedStep,
+                    process: failedOrder.process,
                     isCancelled: true
                 });
 
@@ -105,6 +109,7 @@ export default class OrderBusiness extends CoreClass {
                     ecommerce: SystemCodes.ECOMMERCE.SHOPIFY,
                     erp: SystemCodes.ERP.V3_INTEGRATOR,
                     tenant: this.tenant._id,
+                    traceId: this.traceId,
                     syncBatchId: orderSyncBatch._id,
                     ecommerceId: successOrder.ecommerceId,
                     lines: successOrder.lines,
@@ -148,79 +153,173 @@ export default class OrderBusiness extends CoreClass {
         return Array.from(latestErrorsByEcomId.values());
     }
 
-    syncFailedOrders = async (erp, ecommerce, orderNumberList) => {
-        const query = {
+    syncFailedOrders = async (erp, ecommerce, orderNumberList) => { //TODO: include cancels
+        const nebimOrderBusiness = new NebimOrderBusiness(this.tenant);
+        const createdQuery = {
             erp,
             ecommerce,
             tenant: this.tenant._id,
-            ecommerceId: { $in: orderNumberList }
+            ecommerceId: { $in: orderNumberList },
+            isCancelled: false
         };
 
-        const failedOrderList  = await FailedOrder.find(query);
-
-        if (!failedOrderList.length) return;
-
-        const nebimOrderBusiness = new NebimOrderBusiness(this.tenant);
-
-        const craeteOrderResults = await nebimOrderBusiness.createOrders(failedOrderList.map(x => x.orderData), true);
+        const failedOrderList  = await FailedOrder.find(createdQuery);
 
         const orderSyncBatch = new OrderSyncBatch({
+            request: {
+                orderNumberList: orderNumberList
+            },
             erp: SystemCodes.ERP.V3_INTEGRATOR,
             ecommerce: SystemCodes.ECOMMERCE.SHOPIFY,
             process: SystemCodes.PROCESS.SYNC_FAILED_ORDERS,
             tenant: this.tenant._id,
-            successList: craeteOrderResults.successOrders.map(x => (x.ecommerceId)),
-            failedList: craeteOrderResults.failedOrders.map(x => (x.ecommerceId)),
-            isErrorLogExistsForThisBatch: craeteOrderResults.failedOrders.length > 0,
-            totalFetchedOrderCount: failedOrderList.length,
-            skippedOrderCount: craeteOrderResults.skippedFailedOrderCount
+            traceId: this.traceId,
+            successList: [],
+            failedList: [],
+            isErrorLogExistsForThisBatch: 0,
+            totalFetchedOrderCount: 0,
+            skippedOrderCount: 0,
+            skippedFailedOrderCount: 0,
+            cancelledOrderCount: 0,
+            skippedAlreadySyncedOrderCount: 0,
         });
 
-        for (const failedOrder of craeteOrderResults.failedOrders) {
-            FailedOrder.findOneAndUpdate(
-                {
-                    ecommerceId: failedOrder.ecommerceId,
-                    ecommerce: SystemCodes.ECOMMERCE.SHOPIFY,
-                    erp: SystemCodes.ERP.V3_INTEGRATOR,
-                    tenant: this.tenant._id
-                },
-                {
-                    $set: {
-                        orderData: failedOrder.orderData,
+        if (failedOrderList.length) {
+            this.logger.info(`${failedOrderList.length} failed orders found, sync started`);
+    
+            const craeteOrderResults = await nebimOrderBusiness.createOrders(failedOrderList.map(x => x.orderData), true);
+    
+            for (const failedOrder of craeteOrderResults.failedOrders) {
+                FailedOrder.findOneAndUpdate(
+                    {
+                        ecommerceId: failedOrder.ecommerceId,
+                        ecommerce: SystemCodes.ECOMMERCE.SHOPIFY,
+                        erp: SystemCodes.ERP.V3_INTEGRATOR,
+                        tenant: this.tenant._id
+                    },
+                    {
+                        $set: {
+                            orderData: failedOrder.orderData,
+                            syncBatchId: orderSyncBatch._id,
+                            traceId: this.traceId,
+                            reason: failedOrder.reason,
+                            process: failedOrder.process
+                        }
+                    },
+                    { upsert: true, new: true, setDefaultsOnInsert: true }
+                )
+                .exec()
+            }
+    
+            if (craeteOrderResults.successOrders.length) {
+                for (const successOrder of craeteOrderResults.successOrders) {
+                    const successOrderDoc = new SuccessOrder({
+                        ecommerce: SystemCodes.ECOMMERCE.SHOPIFY,
+                        erp: SystemCodes.ERP.V3_INTEGRATOR,
+                        tenant: this.tenant._id,
                         syncBatchId: orderSyncBatch._id,
-                        reason: failedOrder.reason,
-                        knownFailedStep: failedOrder.knownFailedStep
-                    }
-                },
-                { upsert: true, new: true, setDefaultsOnInsert: true }
-            )
-            .exec()
-        }
-
-        if (craeteOrderResults.successOrders.length) {
+                        traceId: this.traceId,
+                        ecommerceId: successOrder.ecommerceId,
+                        lines: successOrder.lines,
+                        isCancelled: successOrder.isCancelled,
+                        erpId: successOrder.erpId
+                    });
+                       
+                    successOrderDoc.save();
+                }
+            }
+    
             for (const successOrder of craeteOrderResults.successOrders) {
-                const successOrderDoc = new SuccessOrder({
+                FailedOrder.deleteOne({
+                    ecommerceId: successOrder.ecommerceId,
                     ecommerce: SystemCodes.ECOMMERCE.SHOPIFY,
                     erp: SystemCodes.ERP.V3_INTEGRATOR,
                     tenant: this.tenant._id,
-                    syncBatchId: orderSyncBatch._id,
-                    ecommerceId: successOrder.ecommerceId,
-                    lines: successOrder.lines,
-                    isCancelled: successOrder.isCancelled,
-                    erpId: successOrder.erpId
-                });
-                   
-                successOrderDoc.save();
+                    isCancelled: false
+                }).exec();
             }
+
+            orderSyncBatch.successList = craeteOrderResults.successOrders.map(x => (x.ecommerceId));
+            orderSyncBatch.failedList = craeteOrderResults.failedOrders.map(x => (x.ecommerceId));
+            orderSyncBatch.isErrorLogExistsForThisBatch = craeteOrderResults.failedOrders.length > 0;
+            orderSyncBatch.totalFetchedOrderCount = failedOrderList.length;
+            orderSyncBatch.skippedFailedOrderCount = craeteOrderResults.skippedFailedOrderCount;
+            orderSyncBatch.cancelledOrderCount = 0;
+            orderSyncBatch.skippedAlreadySyncedOrderCount = craeteOrderResults.skippedAlreadySyncedOrders;
         }
 
-        for (const successOrder of craeteOrderResults.successOrders) {
-            FailedOrder.deleteOne({
-                ecommerceId: successOrder.ecommerceId,
-                ecommerce: SystemCodes.ECOMMERCE.SHOPIFY,
-                erp: SystemCodes.ERP.V3_INTEGRATOR,
-                tenant: this.tenant._id
-            }).exec();
+        const cancelQuery = {
+            erp,
+            ecommerce,
+            tenant: this.tenant._id,
+            ecommerceId: { $in: orderNumberList },
+            isCancelled: true
+        };
+
+        const failedCancelOrderList  = await FailedOrder.find(cancelQuery);
+
+        if  (failedCancelOrderList.length) {
+            this.logger.info(`${failedCancelOrderList.length} failed cancel orders found, sync started`);
+
+            const cancelOrderResults = await nebimOrderBusiness.cancelOrders(failedCancelOrderList.map(x => x.orderData), true);
+    
+            for (const failedOrder of cancelOrderResults.failedOrders) {
+                FailedOrder.findOneAndUpdate(
+                    {
+                        ecommerceId: failedOrder.ecommerceId,
+                        ecommerce: SystemCodes.ECOMMERCE.SHOPIFY,
+                        erp: SystemCodes.ERP.V3_INTEGRATOR,
+                        tenant: this.tenant._id
+                    },
+                    {
+                        $set: {
+                            orderData: failedOrder.orderData,
+                            syncBatchId: orderSyncBatch._id,
+                            traceId: this.traceId,
+                            reason: failedOrder.reason,
+                            process: failedOrder.process
+                        }
+                    },
+                    { upsert: true, new: true, setDefaultsOnInsert: true }
+                )
+                .exec()
+            }
+    
+            if (cancelOrderResults.successOrders.length) {
+                for (const successOrder of cancelOrderResults.successOrders) {
+                    const successOrderDoc = new SuccessOrder({
+                        ecommerce: SystemCodes.ECOMMERCE.SHOPIFY,
+                        erp: SystemCodes.ERP.V3_INTEGRATOR,
+                        tenant: this.tenant._id,
+                        syncBatchId: orderSyncBatch._id,
+                        traceId: this.traceId,
+                        ecommerceId: successOrder.ecommerceId,
+                        lines: successOrder.lines,
+                        isCancelled: successOrder.isCancelled,
+                        erpId: successOrder.erpId
+                    });
+                       
+                    successOrderDoc.save();
+                }
+            }
+    
+            for (const successOrder of cancelOrderResults.successOrders) {
+                FailedOrder.deleteOne({
+                    ecommerceId: successOrder.ecommerceId,
+                    ecommerce: SystemCodes.ECOMMERCE.SHOPIFY,
+                    erp: SystemCodes.ERP.V3_INTEGRATOR,
+                    tenant: this.tenant._id,
+                    isCancelled: true
+                }).exec();
+            }
+
+            orderSyncBatch.successList = [...orderSyncBatch.successList, ...cancelOrderResults.successOrders.map(x => (x.ecommerceId))];
+            orderSyncBatch.failedList = [...orderSyncBatch.failedList, ...cancelOrderResults.failedOrders.map(x => (x.ecommerceId))];
+            orderSyncBatch.isErrorLogExistsForThisBatch = cancelOrderResults.failedOrders.length > 0 || orderSyncBatch.isErrorLogExistsForThisBatch;
+            orderSyncBatch.totalFetchedOrderCount += failedCancelOrderList.length ;
+            orderSyncBatch.skippedFailedOrderCount += cancelOrderResults.skippedFailedOrderCount;
+            orderSyncBatch.cancelledOrderCount = cancelOrderResults.successOrders.length;
+            orderSyncBatch.skippedAlreadySyncedOrderCount += cancelOrderResults.skippedAlreadySyncedOrders;
         }
 
         orderSyncBatch.save();

@@ -5,6 +5,7 @@ export default mongoose.model('OrderSyncBatch', new mongoose.Schema({
     request: {
         startDate: String,
         endDate: String,
+        orderNumberList: [String]
     },
     successList: [String],
     failedList: [String],
@@ -18,5 +19,6 @@ export default mongoose.model('OrderSyncBatch', new mongoose.Schema({
     erp: { type: String, required: true, enum: Object.keys(SystemCodes.ERP)  },
     ecommerce: { type: String, required: true, enum: Object.keys(SystemCodes.ECOMMERCE) },
     tenant: { type: mongoose.Schema.Types.ObjectId, ref: 'Tenant', required: true },
+    traceId: { type: String, index: true, required: true },
     createdAt: { type: Date, default: Date.now },
 }));

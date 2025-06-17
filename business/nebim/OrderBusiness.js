@@ -68,7 +68,7 @@ export default class NebimOrderBusiness extends CoreClass {
                         ok: false,
                         reason: reason,
                         ecommerceId: order.order_id,
-                        knownFailedStep: "sync_customer",
+                        process: SystemCodes.PROCESS.SYNC_CUSTOMER,
                         orderData: order
                     }
                 }
@@ -97,7 +97,7 @@ export default class NebimOrderBusiness extends CoreClass {
                         orderData: order,
                         reason: reason,
                         ecommerceId: order.order_id,
-                        knownFailedStep: "sync_order" //TODO: make it enum
+                        process: SystemCodes.PROCESS.SYNC_ORDERS
                     }
                 }
             }));
@@ -137,11 +137,9 @@ export default class NebimOrderBusiness extends CoreClass {
         for (const order of orderList.filter(x => x.is_cancelled)) {
             const isFailedOrderExists = Boolean(await FailedOrder.findOne({ ecommerceId: order.order_id, isCancelled: true }));
 
-            const createdOrder = Boolean(
-                await SuccessOrder.findOne({ ecommerceId: order.order_id, tenant: this.tenant._id, ecommerce: order.platform, erp: SystemCodes.ERP.V3_INTEGRATOR })
-            );
+            const createdOrder = await SuccessOrder.findOne({ ecommerceId: order.order_id, tenant: this.tenant._id, ecommerce: order.platform, erp: SystemCodes.ERP.V3_INTEGRATOR })
 
-            if (!createdOrder) {
+            if (!Boolean(createdOrder)) {
                 skippedNotSyncedCancelOrders++
                 continue;
             }
@@ -162,7 +160,7 @@ export default class NebimOrderBusiness extends CoreClass {
                 let orderNumber = "";
 
                 try {
-                    const cancelOrderResponse = await this.#cancelOrder(order);
+                    const cancelOrderResponse = await this.#cancelOrder(createdOrder); //TODO: it makes full cancel
 
                     orderNumber = cancelOrderResponse.OrderNumber;
 
@@ -170,7 +168,6 @@ export default class NebimOrderBusiness extends CoreClass {
                         ok: true,
                         erpId: orderNumber,
                         ecommerceId: order.order_id,
-                        lines: orderResponse.Lines.map(x => ({ erpLineId: x.LineID, quantity: x.Qty1, barcode: x.UsedBarcode, amount: x.LineAmount })),
                         isCancelled: true
                     };
     
@@ -183,7 +180,7 @@ export default class NebimOrderBusiness extends CoreClass {
                         orderData: order,
                         reason: reason,
                         ecommerceId: order.order_id,
-                        knownFailedStep: "sync_cancel_order" //TODO: make it enum
+                        process: SystemCodes.PROCESS.SYNC_CANCEL_ORDERS
                     }
                 }
             }));
@@ -224,7 +221,7 @@ export default class NebimOrderBusiness extends CoreClass {
         return this.api.post(NebimObjectHelper.toNebimOrder(this.tenant, order, nebimCustomer), { "IdemPotent-Key": order.order_id });
     }
 
-    #cancelOrder = async order => {
-        return this.api.post(NebimObjectHelper.toNebimCancelOrder(this.tenant, order), { "IdemPotent-Key": `cancel-${order.order_id}` });
+    #cancelOrder = async (order, createdOrder) => {
+        return this.api.post(NebimObjectHelper.toNebimCancelOrder(this.tenant, order, createdOrder), { "IdemPotent-Key": `cancel-${order.order_id}` });
     }
 }
