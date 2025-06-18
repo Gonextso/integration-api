@@ -87,10 +87,13 @@ export default class WebRequestHelper extends CoreClass {
         return method()
             .then(result => {
                 this.logger.info3(`request_id:${id} - Processed in ${this.#getEndTime(start).toFixed(2)} ms`);
+                const responseString = JSON.stringify(result.data);
             
                 log.status = result.status;
                 log.responseTime = this.#getEndTime(start).toFixed(2);
-                log.response = JSON.stringify(result.data);
+                log.response = Buffer.byteLength(responseString, 'utf8') > 3 * 1024 * 1024 //TODO: implement plus subscibers can hold up to 16mb log
+                    ? "data is larger than 3mb truncated"
+                    : responseString;
 
                 return result;
             })

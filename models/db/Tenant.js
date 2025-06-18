@@ -17,6 +17,7 @@ export default mongoose.model('Tenant', new mongoose.Schema({
         shopifyShopId: { type: String, unique: true, index: true },
         shopOwnerEmail: String,
         plan: String,
+        isInventoryTracking: { type: Boolean, default: true },
         isActive: { type: Boolean, default: true }
     },
     nebim: {
