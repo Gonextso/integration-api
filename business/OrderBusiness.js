@@ -33,13 +33,22 @@ export default class OrderBusiness extends CoreClass {
             process: SystemCodes.PROCESS.SYNC_ORDERS,
             tenant: this.tenant._id,
             traceId: this.traceId,
-            successList: craeteOrderResults.successOrders.map(x => (x.ecommerceId)),
-            failedList: craeteOrderResults.failedOrders.map(x => (x.ecommerceId)),
             isErrorLogExistsForThisBatch: craeteOrderResults.failedOrders.length > 0,
-            totalFetchedOrderCount: shopifyOrderList.length,
-            skippedFailedOrderCount: craeteOrderResults.skippedFailedOrderCount,
-            cancelledOrderCount: 0,
-            skippedAlreadySyncedOrderCount: craeteOrderResults.skippedAlreadySyncedOrders
+            numbers: {
+                total: shopifyOrderList.length,
+                createOrderTotal: shopifyOrderList.filter(x => !x.is_cancelled).length,
+                createOrderSuccess: craeteOrderResults.successOrders.length,
+                createOrderError: craeteOrderResults.failedOrders.length,
+                createOrderSkippedTotal: craeteOrderResults.skippedFailedOrderCount + craeteOrderResults.skippedAlreadySyncedOrders,
+                createOrderSkippedAlreadySynced: craeteOrderResults.skippedAlreadySyncedOrders,
+                createOrderSkippedFailed: craeteOrderResults.skippedFailedOrderCount,
+                cancelOrderTotal: shopifyOrderList.filter(x => x.is_cancelled).length,
+                cancelOrderSuccess: 0,
+                cancelOrderError: 0,
+                cancelOrderSkippedTotal: 0,
+                cancelOrderSkippedAlreadySynced: 0,
+                cancelOrderSkippedFailed: 0
+            }
         });
 
         if (craeteOrderResults.failedOrders.length) {
@@ -121,13 +130,15 @@ export default class OrderBusiness extends CoreClass {
             }
         }
 
-        orderSyncBatch.successList = [...orderSyncBatch.successList, ...cancelOrders.successOrders.map(x => (x.ecommerceId))];
-        orderSyncBatch.failedList = [...orderSyncBatch.failedList, ...cancelOrders.failedOrders.map(x => (x.ecommerceId))];
-        orderSyncBatch.isErrorLogExistsForThisBatch = cancelOrders.failedOrders.length > 0 || craeteOrderResults.failedOrders.length > 0;
-        orderSyncBatch.cancelledOrderCount = cancelOrders.successOrders.length;
-        orderSyncBatch.skippedFailedOrderCount += cancelOrders.skippedFailedOrderCount;
-        orderSyncBatch.skippedAlreadySyncedOrderCount += cancelOrders.skippedAlreadySyncedOrders;
-        orderSyncBatch.skippedNotSyncedCancelOrders = cancelOrders.skippedNotSyncedCancelOrders;
+        orderSyncBatch.numbers = {
+            ...orderSyncBatch.numbers,
+            cancelOrderSuccess: cancelOrders.successOrders.length,
+            cancelOrderError: cancelOrders.failedOrders.length,
+            cancelOrderSkippedTotal: cancelOrders.skippedAlreadySyncedOrders + cancelOrders.skippedFailedOrderCount + cancelOrders.skippedNotSyncedCancelOrders,
+            cancelOrderSkippedAlreadySynced: cancelOrders.skippedAlreadySyncedOrders,
+            cancelOrderSkippedFailed: cancelOrders.skippedFailedOrderCount,
+            cancelOrderSkippedNotFound: cancelOrders.skippedNotSyncedCancelOrders
+        }
 
         orderSyncBatch.save();
     }
