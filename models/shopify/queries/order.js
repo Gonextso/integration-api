@@ -1,7 +1,7 @@
 export default {
     openOrders: `
 query Orders($cursor: String) {
-    orders(first: 250, after: $cursor, query: "(status:open OR status:cancelled) AND created_at:>=@start_date AND created_at:<=@end_date") {
+    orders(first: 250, after: $cursor, query: "(status:open OR status:cancelled) AND created_at:>='@start_date' AND created_at:<='@end_date'") {
         pageInfo {
             hasNextPage
         }
