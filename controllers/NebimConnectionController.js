@@ -10,6 +10,10 @@ export default new class NebimConnectionController extends CoreController {
     check = async (req, res) => {
         const nebimAPI = new NebimV3IntegratorAPI(req.tenant); 
 
+        if (!req.body) {
+            return this.response(res, { status: HttpStatusCodes.BAD_REQUEST, info: "Request body is required" });
+        }
+
         const exception = await nebimAPI.checkConnection(req.body);
 
         if (exception) {

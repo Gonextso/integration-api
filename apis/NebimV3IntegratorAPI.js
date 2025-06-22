@@ -12,7 +12,7 @@ export default class NebimV3IntegratorAPI extends CoreAPI {
         const  { host, userGroup, user, password } = infos;
 
         if (!host || !userGroup || !user || !password) {
-            this.throws("Host, UserGroup, User and Password are required to connect to Nebim V3 Integrator");
+            return "Host, UserGroup, User and Password are required to connect to Nebim V3 Integrator";
         }
 
         const response = await this.httpRequest.post(`${host}/IntegratorService/Connect`, {

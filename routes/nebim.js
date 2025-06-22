@@ -3,6 +3,6 @@ import NebimConnectionController from "../controllers/NebimConnectionController.
 
 const router = express.Router();
 
-router.get("/check", NebimConnectionController.check);
+router.post("/check", NebimConnectionController.check);
 
 export default router;
