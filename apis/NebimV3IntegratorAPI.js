@@ -8,6 +8,31 @@ export default class NebimV3IntegratorAPI extends CoreAPI {
         this.cache = new NebimCache(tenant);
     }
 
+    checkConnection = async (infos) => {
+        const  { host, userGroup, user, password } = infos;
+
+        if (!host || !userGroup || !user || !password) {
+            this.throws("Host, UserGroup, User and Password are required to connect to Nebim V3 Integrator");
+        }
+
+        const response = await this.httpRequest.post(`${host}/IntegratorService/Connect`, {
+            UserGroupCode: userGroup,
+            UserName: user,
+            Password: password,
+            Validate: true
+        });
+
+        if (response instanceof Error) {
+            return response.message;
+        }
+
+        if (response.data["Exception"]) {
+            return response.data["Exception"]
+        }
+
+        return ""
+    }
+
     connectionProvider = async exec => {
         let response;
         let tokenData = await this.cache.get("Token");

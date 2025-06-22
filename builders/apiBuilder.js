@@ -7,6 +7,7 @@ import ErrorController from '../controllers/ErrorController.js';
 import healthRouter  from '../routes/health.js' ;
 import shopifyNebimOrderRouter from '../routes/shopifyNebimOrder.js';
 import shopifyNebimProductRouter from '../routes/shopifyNebimProduct.js';
+import nebimRouter from '../routes/nebim.js';
 import RequestMiddleware from '../middlewares/RequestMiddleware.js';
 import LogHelper from '../helpers/LogHelper.js';
 import ConfigMiddleware from '../middlewares/ConfigMiddleware.js';
@@ -49,6 +50,7 @@ app.use((_, res, next) => {
 app.use(RequestMiddleware.setTraceId);
 
 app.use(`${routePrefix}/health`, healthRouter);
+app.use(`${routePrefix}/nebim`,  ConfigMiddleware.setConfigViaTenantId, nebimRouter);
 app.use(`${routePrefix}/shopify/nebim/order`,  ConfigMiddleware.setConfigViaTenantId, shopifyNebimOrderRouter);
 app.use(`${routePrefix}/shopify/nebim/product`,  ConfigMiddleware.setConfigViaTenantId, shopifyNebimProductRouter);
 

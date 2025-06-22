@@ -80,7 +80,7 @@ export default class WebRequestHelper extends CoreClass {
             responseTime: 0,
             response: null,
             url: args[0],
-            headers: JSON.stringify(this.#removeSecrets(args[2].headers)),
+            headers: args[2] && args[2].headers ? JSON.stringify(this.#removeSecrets(args[2].headers)) : "",
             body: JSON.stringify(args[1])
         })
 
@@ -98,12 +98,13 @@ export default class WebRequestHelper extends CoreClass {
                 return result;
             })
             .catch(error => {
+                if (axios.isAxiosError(error)) {
+                    log.status = error.status;
+                    log.responseTime = this.#getEndTime(start).toFixed(2);
+                    log.response = JSON.stringify(error.data);
+                }
 
-                log.status = result.status;
-                log.responseTime = this.#getEndTime(start).toFixed(2);
-                log.response = JSON.stringify(result.data);
-
-                throw error;
+                return error;
             })
             .finally(_ => {
                 log.save() //TODO: can be closed via interaction for success logs. nebim returns 200 anytime
