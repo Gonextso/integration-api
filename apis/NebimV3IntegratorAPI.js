@@ -1,6 +1,7 @@
 import CoreAPI from "../core/CoreAPI.js";
 import NebimCache from "../cache/NebimCache.js";
 import HttpStatusCodes from "../enums/HttpStatusCodes.js";
+import CryptoHelper from "../helpers/CryptoHelper.js";
 
 export default class NebimV3IntegratorAPI extends CoreAPI {
     constructor(tenant) {
@@ -41,7 +42,7 @@ export default class NebimV3IntegratorAPI extends CoreAPI {
             response = await this.httpRequest.post(`${this.tenant.nebim.host}/IntegratorService/Connect`, {
                 UserGroupCode: this.tenant.nebim.userGroup,
                 UserName: this.tenant.nebim.user,
-                Password: this.tenant.nebim.password,
+                Password: CryptoHelper.decrypt(this.tenant.nebim.password),
                 Validate: true
             });
 

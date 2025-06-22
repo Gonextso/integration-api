@@ -30,6 +30,9 @@ export default new class ConfigMiddleware extends CoreController {
             .select('+shopify.apiKey.encryptedData')
             .select('+shopify.apiKey.iv')
             .select('+shopify.apiKey.authTag')
+            .select('+nebim.password.encryptedData')
+            .select('+nebim.password.iv')
+            .select('+nebim.password.authTag')
             .lean();
 
         if (!tenant) {
