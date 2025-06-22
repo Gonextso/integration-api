@@ -22,7 +22,7 @@ export default class ShopifyOrderBusiness extends CoreClass {
                 cursor: endCursor
             };
 
-            const data = await this.api.query(query.replace('@start_date', startDate).replace('@end_date', endDate), variables);
+            const data = await this.api.query(query.replace('@start_date', `"${startDate}"`).replace('@end_date', `"${endDate}"`), variables);
 
             if (data.errors) {
                 this.logger.error('GraphQL Errors:', data.errors);
