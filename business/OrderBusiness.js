@@ -17,7 +17,7 @@ export default class OrderBusiness extends CoreClass {
         
         const shopifyOrderList = await shopifyOrderBusiness.getOrders(startDate, endDate);
 
-        if (!shopifyOrderList.length) return;
+        if (!shopifyOrderList || (shopifyOrderList && !shopifyOrderList.length)) return;
         
         await nebimOrderBusiness.cacheDefaults();
 
