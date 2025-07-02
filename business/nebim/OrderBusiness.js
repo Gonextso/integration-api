@@ -89,13 +89,12 @@ export default class NebimOrderBusiness extends CoreClass {
                     }; //TODO: fix partially cancelled business. not send lines accepts as canceled needs to be considered
 
                 } catch (error) {
-                    const reason = `Error on transactionId:${transaction} - msg:${error.message} - stack:${error.stack}`;
-                    this.logger.error(new Error(reason));
+                    this.logger.error(new Error(`Error on transactionId:${transaction} - msg:${error.message} - stack:${error.stack}`));
 
                     return {
                         ok: false,
                         orderData: order,
-                        reason: reason,
+                        reason: error.message,
                         ecommerceId: order.order_id,
                         process: SystemCodes.PROCESS.SYNC_ORDERS
                     }
