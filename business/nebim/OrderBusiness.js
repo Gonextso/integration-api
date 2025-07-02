@@ -19,6 +19,7 @@ export default class NebimOrderBusiness extends CoreClass {
 
     cacheDefaults = async (force = false) => {
         const allAddressCodes = await this.cache.get(CacheFields.NEBIM.ADDRESS_CODES);
+        console.log(allAddressCodes)
 
         if (allAddressCodes && allAddressCodes.length && force) {
             await this.cache.delete(CacheFields.NEBIM.ADDRESS_CODES);
