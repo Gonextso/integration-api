@@ -8,7 +8,7 @@ export default class RedisAPI extends CoreAPI {
     }
 
     setCache = async (key, value) => {
-        await this.client.set(key, value);
+        await this.client.set(key, value).then(data => console.log(data)).catch(error => console.log(error));
     };
 
     getCache = async key => {
