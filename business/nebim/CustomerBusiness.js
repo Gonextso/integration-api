@@ -33,7 +33,7 @@ export default class NebimCustomerClass extends CoreClass {
     #getAddressCodes = async (address) => {
         const addressCodes = await this.cache.findAddressCode(address);
 
-        if (!addressCodes) this.throws(`Nebim address codes not cached or address cannot found. Address: ${JSON.stringify(address)}`);
+        if (!addressCodes) this.throws(`Address cannot found from cache. Address: ${JSON.stringify(address)}`);
 
         return addressCodes;
     }
