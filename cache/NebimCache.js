@@ -9,6 +9,7 @@ export default class NebimCache extends CoreCache {
 
     findAddressCode = async ({city, district}) => {
         const allAddressCodes = await this.get(CacheFields.NEBIM.ADDRESS_CODES) ?? [];
+        console.log(allAddressCodes)
 
         return allAddressCodes.filter(x => 
             StringHelper.compareStrings(x.DistrictDescription, district) && 
