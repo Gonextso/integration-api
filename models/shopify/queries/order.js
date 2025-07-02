@@ -67,5 +67,66 @@ query Orders($cursor: String) {
             }
         }
     }
+}`,
+    orderByIds: `
+query GetOrdersById($ids: [ID!]!) {
+    nodes(ids: $ids) {
+        cancelReason
+        createdAt
+        currencyCode
+        fullyPaid
+        id
+        name
+        netPayment
+        note
+        totalDiscounts
+        totalPrice
+        billingAddress {
+            address1
+            address2
+            city
+            id
+            lastName
+            phone
+            zip
+        }
+        customer {
+            displayName
+            email
+            firstName
+            id
+            lastName
+            phone
+            note
+        }
+        lineItems(first: 250) {
+            nodes {
+                discountedUnitPrice
+                id
+                originalUnitPrice
+                quantity
+                refundableQuantity
+                sku
+                totalDiscount
+                nonFulfillableQuantity
+                variant {
+                    barcode
+                }
+            }
+        }
+        shippingAddress {
+            address1
+            address2
+            city
+            firstName
+            id
+            name
+            lastName
+            name
+            phone
+            zip
+        }
+        tags
+    }
 }`
 }

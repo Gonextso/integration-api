@@ -166,6 +166,7 @@ export default class OrderBusiness extends CoreClass {
 
     syncFailedOrders = async (erp, ecommerce, orderNumberList) => { //TODO: include cancels
         const nebimOrderBusiness = new NebimOrderBusiness(this.tenant);
+        const shopifyOrderBusiness = new ShopifyOrderBusiness(this.tenant);
         const createdQuery = {
             erp,
             ecommerce,
@@ -197,8 +198,9 @@ export default class OrderBusiness extends CoreClass {
 
         if (failedOrderList.length) {
             this.logger.info(`${failedOrderList.length} failed orders found, sync started`);
-    
-            const craeteOrderResults = await nebimOrderBusiness.createOrders(failedOrderList.map(x => x.orderData), true);
+
+            const orderList = await shopifyOrderBusiness.getOrdersByIds(failedOrderList.map(x => x.orderData.shopify_id))
+            const craeteOrderResults = await nebimOrderBusiness.createOrders(orderList, true);
     
             for (const failedOrder of craeteOrderResults.failedOrders) {
                 FailedOrder.findOneAndUpdate(
