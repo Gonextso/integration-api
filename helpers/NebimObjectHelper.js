@@ -68,6 +68,7 @@ export default class NebimObjectHelper extends CoreClass {
         PosTerminalID: tenant.nebim.order.posTerminalId,
         OfficeCode: tenant.nebim.order.office,
         StoreCode: tenant.nebim.order.store,
+        CompanyCode: tenant.nebim.order.company,
         StoreWarehouseCode: tenant.nebim.order.warehouse,
         OrderDate: order.order_date,
         DocumentNumber: order.order_id,

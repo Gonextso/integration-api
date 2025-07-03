@@ -117,4 +117,12 @@ export default class NebimV3IntegratorAPI extends CoreAPI {
 
         return response.data;
     })
+
+    getUserInfo = async _ => await this.connectionProvider(async headers => {
+        const response = await this.httpRequest.get(`${this.tenant.nebim.host}/IntegratorService/GetUserInfo`, {
+            headers: headers
+        });
+
+        return response.data;
+    })
 }

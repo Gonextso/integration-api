@@ -11,7 +11,7 @@ export default new class ErrorController extends CoreController {
         return this.response(res, { status: HttpStatusCodes.NOT_FOUND, info: `Requested url: ${req.url} not found` });
     }
     clientErrorHandler = async (error, req, res, next) => {
-        if (error instanceof ClientError) return this.response(res, { status: HttpStatusCodes.BAD_REQUEST, error });
+        if (error instanceof ClientError) return this.response(res, { status: HttpStatusCodes.BAD_REQUEST, info: error.message});
         else next();
     }
     internalServerError = async (error, req, res, next) => {
