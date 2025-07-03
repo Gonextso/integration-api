@@ -5,7 +5,6 @@ import FailedOrder from "../models/db/FailedOrder.js";
 import NebimOrderBusiness from "./nebim/OrderBusiness.js";
 import ShopifyOrderBusiness from "./shopify/OrderBusiness.js";
 import SuccessOrder from "../models/db/SuccessOrder.js";
-import RequestLog from "../models/db/RequestLog.js";
 
 export default class OrderBusiness extends CoreClass {
     constructor(tenant) {
@@ -156,13 +155,9 @@ export default class OrderBusiness extends CoreClass {
         const latestErrorsByEcomId = new Map();
     
         for (const log of failedOrdersList) {
-            const { ecommerceId, traceId } = log;
+            const { ecommerceId } = log;
             if (ecommerceId && !latestErrorsByEcomId.has(ecommerceId)) {
-                const restructuredLog = {
-                    requests: await RequestLog.find({ traceId: traceId }),
-                    ...log._doc
-                }
-                latestErrorsByEcomId.set(ecommerceId, restructuredLog);
+                latestErrorsByEcomId.set(ecommerceId, log);
             }
         }
     

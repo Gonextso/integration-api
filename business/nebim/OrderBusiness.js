@@ -65,12 +65,11 @@ export default class NebimOrderBusiness extends CoreClass {
                 try {
                     customer = await this.customerBusiness.syncCustomerFromOrder(order);
                 } catch (error) {
-                    const reason = `Error on transactionId:${transaction} - msg:${error.message} - stack:${error.stack}`;
-                    this.logger.error(new Error(reason));
+                    this.logger.error(new Error(`Error on transactionId:${transaction} - msg:${error.message} - stack:${error.stack}`));
     
                     return {
                         ok: false,
-                        reason: reason,
+                        reason: error.message,
                         ecommerceId: order.order_id,
                         process: SystemCodes.PROCESS.SYNC_CUSTOMER,
                         orderData: order
