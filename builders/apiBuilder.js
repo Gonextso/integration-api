@@ -55,7 +55,7 @@ app.use(`${routePrefix}/shopify/nebim/order`,  ConfigMiddleware.setConfigViaTena
 app.use(`${routePrefix}/shopify/nebim/product`,  ConfigMiddleware.setConfigViaTenantId, shopifyNebimProductRouter);
 
 app.use('/', ErrorController.notFound);
-app.use(ErrorController.internalServerError);
+app.use(ErrorController.clientErrorHandler, ErrorController.internalServerError);
 
 if (!process.env.PORT) process.exit(1); //TODO: add log
 

@@ -8,6 +8,7 @@ import NebimObjectHelper from "../../helpers/NebimObjectHelper.js";
 import FailedOrder from "../../models/db/FailedOrder.js";
 import SystemCodes from "../../enums/SystemCodes.js";
 import SuccessOrder from "../../models/db/SuccessOrder.js";
+import TokenBusiness from "../TokenBusiness.js";
 
 export default class NebimOrderBusiness extends CoreClass {
     constructor(tenant) {
@@ -15,6 +16,7 @@ export default class NebimOrderBusiness extends CoreClass {
         this.cache = new NebimCache(tenant);
         this.api = new NebimV3IntegratorAPI(tenant);
         this.customerBusiness = new NebimCustomerBusiness(tenant);
+        this.tokenBusiness = new TokenBusiness(tenant);
     }
 
     cacheDefaults = async (force = false) => {
@@ -58,6 +60,8 @@ export default class NebimOrderBusiness extends CoreClass {
             promises.push(SystemHelper.createTransaction(this.tenant, transaction, async () => {
                 let orderNumber = "";
 
+                await this.tokenBusiness.checkTenantTokenAvailability(1) //TODO: order token
+
                 try {
                     customer = await this.customerBusiness.syncCustomerFromOrder(order);
                 } catch (error) {
@@ -77,6 +81,8 @@ export default class NebimOrderBusiness extends CoreClass {
                     const orderResponse = await this.#createOrder(order, customer);
     
                     orderNumber = orderResponse.OrderNumber;
+
+                    await this.tokenBusiness.useToken(1) //TODO:order token
 
                     return {
                         ok: true,

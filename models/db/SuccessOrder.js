@@ -23,4 +23,5 @@ export default mongoose.model('SuccessOrder', new mongoose.Schema({
     syncBatchId: { type: mongoose.Schema.Types.ObjectId, ref: 'OrderSyncLog', required: true },
     traceId: { type: String, index: true, required: true },
     createdAt: { type: Date, default: Date.now },
+    cleared: { type: Boolean, default: false }
 }));
