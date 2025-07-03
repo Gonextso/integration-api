@@ -180,14 +180,11 @@ export default class OrderBusiness extends CoreClass {
                 log.reason = 
 `Reason: 
 
-                
-    ${log.reason}
-
+${log.reason}
 
 Request Log Body: 
 
-
-    ${bodyBeautified}`;
+${bodyBeautified}`;
 
                 latestErrorsByEcomId.set(ecommerceId, log);
             }
