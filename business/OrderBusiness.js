@@ -161,10 +161,29 @@ export default class OrderBusiness extends CoreClass {
                 const requestLogBody = await RequestLog
                     .findOne({ traceId })
                     .sort({ createdAt: -1 })
-                    .select({ body: 1, _id: 0 }) 
+                    .select({ body: 1, _id: 0 })
                     .lean();
 
-                log.reason = `Reason: ${log.reason}\nRequest Log Body: ${requestLogBody?.body ?? ""}`;
+                let bodyBeautified = "";
+                if (requestLogBody?.body) {
+                    if (typeof requestLogBody.body === "string") {
+                        try {
+                            bodyBeautified = JSON.stringify(JSON.parse(requestLogBody.body), null, 2);
+                        } catch (err) {
+                            bodyBeautified = requestLogBody.body; // fallback for non‑JSON strings
+                        }
+                    } else {
+                        bodyBeautified = JSON.stringify(requestLogBody.body, null, 2);
+                    }
+                }
+
+                log.reason = `Reason: 
+----------
+${log.reason}
+----------
+Request Log Body: 
+----------
+${bodyBeautified}`;
                 latestErrorsByEcomId.set(ecommerceId, log);
             }
         }
