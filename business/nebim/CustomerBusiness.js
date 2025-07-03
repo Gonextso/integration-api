@@ -1,14 +1,12 @@
 import CoreClass from "../../core/CoreClass.js";
 import NebimV3IntegratorAPI from "../../apis/NebimV3IntegratorAPI.js";
 import NebimCache from "../../cache/NebimCache.js";
-import NebimObjectHelper from "../../helpers/NebimObjectHelper.js";
 
 export default class NebimCustomerClass extends CoreClass {
     constructor(tenant) {
-        super();
+        super(tenant);
         this.api = new NebimV3IntegratorAPI(tenant);
         this.cache = new NebimCache(tenant);
-        this.tenant = tenant;
     }
 
     fetchCustomer = async ({ email, phone }) => {
