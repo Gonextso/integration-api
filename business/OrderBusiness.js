@@ -160,7 +160,7 @@ export default class OrderBusiness extends CoreClass {
             if (ecommerceId && !latestErrorsByEcomId.has(ecommerceId)) {
                 const restructuredLog = {
                     requests: await RequestLog.find({ traceId: traceId }),
-                    ...log
+                    ...log._doc
                 }
                 latestErrorsByEcomId.set(ecommerceId, restructuredLog);
             }
