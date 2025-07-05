@@ -170,7 +170,7 @@ export default class OrderBusiness extends CoreClass {
                         try {
                             bodyBeautified = JSON.stringify(JSON.parse(requestLogBody.body), null, 2);
                         } catch (err) {
-                            bodyBeautified = requestLogBody.body; // fallback for non‑JSON strings
+                            bodyBeautified = requestLogBody.body;
                         }
                     } else {
                         bodyBeautified = JSON.stringify(requestLogBody.body, null, 2);
