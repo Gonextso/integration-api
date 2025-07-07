@@ -228,7 +228,7 @@ ${bodyBeautified}`;
         if (failedOrderList.length) {
             this.logger.info(`${failedOrderList.length} failed orders found, sync started`);
 
-            const orderList = await shopifyOrderBusiness.getOrdersByIds(failedOrderList.map(x => x.orderData.shopify_id))
+            const orderList = await shopifyOrderBusiness.getOrdersByIds(failedOrderList.map(x => x.orderData.shopifyId))
             const craeteOrderResults = await nebimOrderBusiness.createOrders(orderList, true);
     
             for (const failedOrder of craeteOrderResults.failedOrders) {
@@ -303,7 +303,8 @@ ${bodyBeautified}`;
         if  (failedCancelOrderList.length) {
             this.logger.info(`${failedCancelOrderList.length} failed cancel orders found, sync started`);
 
-            const cancelOrderResults = await nebimOrderBusiness.cancelOrders(failedCancelOrderList.map(x => x.orderData), true);
+            const cancelOrderList = await shopifyOrderBusiness.getOrdersByIds(failedCancelOrderList.map(x => x.orderData.shopifyId))
+            const cancelOrderResults = await nebimOrderBusiness.cancelOrders(cancelOrderList, true);
     
             for (const failedOrder of cancelOrderResults.failedOrders) {
                 FailedOrder.findOneAndUpdate(

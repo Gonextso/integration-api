@@ -9,7 +9,8 @@ export default class {
         SYNC_CUSTOMER: 'SYNC_CUSTOMER',
         SYNC_ORDERS: 'SYNC_ORDERS',
         SYNC_CANCEL_ORDERS: 'SYNC_CANCEL_ORDERS',
-        SYNC_FAILED_ORDERS: 'SYNC_FAILED_ORDERS'
+        SYNC_FAILED_ORDERS: 'SYNC_FAILED_ORDERS',
+        TOKEN_CHECK: 'TOKEN_CHECK'
     }
     static BILLING_PLAN_KEYS = {
         BASIC: 'basic',

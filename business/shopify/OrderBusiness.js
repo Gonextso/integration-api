@@ -44,14 +44,6 @@ export default class ShopifyOrderBusiness extends CoreClass {
         return ShopifyObjectHelper.getOrderList(allOrders);
     }
 
-    /**
-     * Fetch specific orders by their numeric IDs.
-     * Shopify’s GraphQL Admin API accepts up to 250 IDs per call,
-     * so we break the request into pages (“chunks”) when needed.
-     *
-     * @param {(number|string)[]} orderIds - array of Shopify order IDs (numeric or GID)
-     * @returns {Promise<Array>}  - normalized order list
-     */
     getOrdersByIds = async (orderIds = []) => {
         if (!Array.isArray(orderIds) || orderIds.length === 0) {
             return [];

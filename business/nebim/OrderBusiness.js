@@ -59,8 +59,20 @@ export default class NebimOrderBusiness extends CoreClass {
 
             promises.push(SystemHelper.createTransaction(this.tenant, transaction, async () => {
                 let orderNumber = "";
+                try {
+                    await this.tokenBusiness.checkTenantTokenAvailability(1) //TODO: order token
+                } catch (error) {
+                    return {
+                        ok: false,
+                        reason: error.message,
+                        ecommerceId: order.order_id,
+                        process: SystemCodes.PROCESS.TOKEN_CHECK,
+                        orderData: {
+                            shopifyId: order.shopify_id
+                        }
+                    }
+                }
 
-                await this.tokenBusiness.checkTenantTokenAvailability(1) //TODO: order token
 
                 try {
                     customer = await this.customerBusiness.syncCustomerFromOrder(order);
@@ -72,7 +84,9 @@ export default class NebimOrderBusiness extends CoreClass {
                         reason: error.message,
                         ecommerceId: order.order_id,
                         process: SystemCodes.PROCESS.SYNC_CUSTOMER,
-                        orderData: order
+                        orderData: {
+                            shopifyId: order.shopify_id
+                        }
                     }
                 }
 
@@ -98,7 +112,9 @@ export default class NebimOrderBusiness extends CoreClass {
 
                     return {
                         ok: false,
-                        orderData: order,
+                        orderData: {
+                            shopifyId: order.shopify_id
+                        },
                         reason: error.message,
                         ecommerceId: order.order_id,
                         process: SystemCodes.PROCESS.SYNC_ORDERS
@@ -180,7 +196,9 @@ export default class NebimOrderBusiness extends CoreClass {
     
                     return {
                         ok: false,
-                        orderData: order,
+                        orderData: {
+                            shopifyId: order.shopify_id
+                        },
                         reason: error.message,
                         ecommerceId: order.order_id,
                         process: SystemCodes.PROCESS.SYNC_CANCEL_ORDERS
