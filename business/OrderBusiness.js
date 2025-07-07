@@ -182,8 +182,7 @@ export default class OrderBusiness extends CoreClass {
 
 ${log.reason}
 
-Trace ID : ${traceId}
-Last Request Log Body : 
+Last Request Log Body For This Trace: 
 
 ${bodyBeautified}`;
 
