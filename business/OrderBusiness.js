@@ -178,7 +178,9 @@ export default class OrderBusiness extends CoreClass {
                 }
 
                 log.reason = 
-`Reason: 
+`
+-------------------------------------
+Reason: 
 -------------------------------------
 ${log.reason}
 -------------------------------------
