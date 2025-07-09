@@ -15,6 +15,7 @@ export default class OrderBusiness extends CoreClass {
     syncShopifyToNebim = async (startDate, endDate) => {        
         const shopifyOrderBusiness = new ShopifyOrderBusiness(this.tenant);
         const nebimOrderBusiness = new NebimOrderBusiness(this.tenant);
+        const orderMetadataMapping = [];
         
         const shopifyOrderList = await shopifyOrderBusiness.getOrders(startDate, endDate);
 
@@ -73,6 +74,11 @@ export default class OrderBusiness extends CoreClass {
         if (craeteOrderResults.successOrders.length) {
             for (const successOrder of craeteOrderResults.successOrders) {
 
+                orderMetadataMapping.push({
+                    ecommerceId: successOrder.shopifyId,
+                    erpId: successOrder.erpId
+                });
+
                 const successOrderDoc = new SuccessOrder({
                     ecommerce: SystemCodes.ECOMMERCE.SHOPIFY,
                     erp: SystemCodes.ERP.V3_INTEGRATOR,
@@ -89,6 +95,10 @@ export default class OrderBusiness extends CoreClass {
                    
                 successOrderDoc.save();
             }
+        }
+
+        if (orderMetadataMapping.length) {
+            await shopifyOrderBusiness.updateErpMetadataForOrders(orderMetadataMapping);
         }
 
         const cancelOrders = await nebimOrderBusiness.cancelOrders(shopifyOrderList);
@@ -199,6 +209,7 @@ ${bodyBeautified}
     syncFailedOrders = async (erp, ecommerce, orderNumberList) => { //TODO: include cancels
         const nebimOrderBusiness = new NebimOrderBusiness(this.tenant);
         const shopifyOrderBusiness = new ShopifyOrderBusiness(this.tenant);
+        const orderMetadataMapping = [];
         const createdQuery = {
             erp,
             ecommerce,
@@ -275,6 +286,12 @@ ${bodyBeautified}
             }
     
             for (const successOrder of craeteOrderResults.successOrders) {
+
+                orderMetadataMapping.push({
+                    ecommerceId: successOrder.shopifyId,
+                    erpId: successOrder.erpId
+                });
+
                 FailedOrder.deleteOne({
                     ecommerceId: successOrder.ecommerceId,
                     ecommerce: SystemCodes.ECOMMERCE.SHOPIFY,
@@ -282,6 +299,10 @@ ${bodyBeautified}
                     tenant: this.tenant._id,
                     isCancelled: false
                 }).exec();
+            }
+
+            if (orderMetadataMapping.length) {
+                await shopifyOrderBusiness.updateErpMetadataForOrders(orderMetadataMapping);
             }
 
             orderSyncBatch.successList = craeteOrderResults.successOrders.map(x => (x.ecommerceId));
