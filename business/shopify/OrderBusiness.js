@@ -109,33 +109,6 @@ export default class ShopifyOrderBusiness extends CoreClass {
     }
 
     /**
-     * Get orders by IDs and update their ERP metadata using ecommerceId and erpId mappings
-     * @param {Array<Object>} orderMappings - Array of objects with ecommerceId (Shopify order ID) and erpId (ERP order ID)
-     * @param {string} namespace - Metadata namespace (default: 'erp')
-     * @param {string} key - Metadata key (default: 'id')
-     * @returns {Promise<Object>} - Object containing orders and metadata update results
-     */
-    getOrdersAndUpdateErpMetadata = async (orderMappings = [], namespace = 'erp', key = 'id') => {
-        if (!Array.isArray(orderMappings) || orderMappings.length === 0) {
-            return { orders: [], metadataResults: [] };
-        }
-
-        // Extract ecommerceIds (Shopify order IDs) for fetching orders
-        const ecommerceIds = orderMappings.map(mapping => mapping.ecommerceId);
-        
-        // Fetch orders
-        const orders = await this.getOrdersByIds(ecommerceIds);
-        
-        // Update ERP metadata
-        const metadataResults = await this.updateErpMetadataForOrders(orderMappings, namespace, key);
-        
-        return {
-            orders: orders,
-            metadataResults: metadataResults
-        };
-    }
-
-    /**
      * Sends ERP ID to Shopify order metadata
      * @param {string} orderId - Shopify order ID (can be with or without gid://shopify/Order/ prefix)
      * @param {string} erpId - ERP system ID to store in metadata
@@ -170,13 +143,13 @@ export default class ShopifyOrderBusiness extends CoreClass {
 
             if (data.errors) {
                 this.logger.error('GraphQL Errors when updating order metafields:', data.errors);
-                throw new Error(`Failed to update order metafields: ${data.errors[0]?.message || 'Unknown error'}`);
+                this.throws(`Failed to update order metafields: ${data.errors[0]?.message || 'Unknown error'}`);
             }
 
             if (data.data?.orderUpdate?.userErrors?.length > 0) {
                 const userErrors = data.data.orderUpdate.userErrors;
                 this.logger.error('User errors when updating order metafields:', userErrors);
-                throw new Error(`Order update failed: ${userErrors[0]?.message || 'Unknown error'}`);
+                this.throws(`Order update failed: ${userErrors[0]?.message || 'Unknown error'}`);
             }
 
             this.logger.info2(`Successfully set ERP ID metadata for order ${orderId}: ${erpId}`);
@@ -190,7 +163,7 @@ export default class ShopifyOrderBusiness extends CoreClass {
 
         } catch (error) {
             this.logger.error(`Error setting ERP ID metadata for order ${orderId}:`, error);
-            throw error;
+            this.throws(`Error setting ERP ID metadata for order ${orderId}: ${error.message}`);
         }
     }
 
