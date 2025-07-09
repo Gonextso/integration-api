@@ -14,7 +14,7 @@ export default class {
     }
     static BILLING_PLANS = {
         BASIC: {
-            KEY: 'basic',
+            KEY: 'BASIC',
             DESCRIPTION: 'Başlangıç ve uygulamanın test edilmesi için ideal bir plan',
             DETAILS: [
                 "7 günlük log kaydı",
@@ -25,7 +25,7 @@ export default class {
             CURRENCY: 'USD'
         },
         COMMUNITY: {
-            KEY: 'community',
+            KEY: 'COMMUNITY',
             DESCRIPTION: 'Orta ölçekli işletmeler için tavsiye edilen plan',
             DETAILS: [
                 "7 günlük log kaydı",
@@ -36,7 +36,7 @@ export default class {
             CURRENCY: 'USD'
         },
         ENTERPRISE: {
-            KEY: 'enterprise',
+            KEY: 'ENTERPRISE',
             DESCRIPTION: 'Kesintisiz destek alabileceğiniz destek portalı ile birlikte uygulamayı limitsiz kullanabileceğiniz plan',
             DETAILS: [
                 "30 günlük log kaydı",
