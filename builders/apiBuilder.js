@@ -57,7 +57,7 @@ app.use(`${routePrefix}/shopify/nebim/product`,  ConfigMiddleware.setConfigViaTe
 app.use('/', ErrorController.notFound);
 app.use(ErrorController.clientErrorHandler, ErrorController.internalServerError);
 
-if (!process.env.PORT) process.exit(1); //TODO: add log
+if (!process.env.PORT) process.exit(1);
 
 app.listen(process.env.PORT, '::'); 
 

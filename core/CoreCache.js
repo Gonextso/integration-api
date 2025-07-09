@@ -36,7 +36,11 @@ export default class CoreCache extends CoreClass {
         await this.redis.deleteCache(`${this.tenant.name}:${key}`);
     }
 
-    flush = async () => {
+    deleteAll = async _ => {
+        await this.redis.deleteCache(`${this.tenant.name}:*`);
+    }
+
+    flush = async _ => {
         await this.redis.flushCache();
     }
 
