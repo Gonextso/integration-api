@@ -12,11 +12,6 @@ export default class {
         SYNC_FAILED_ORDERS: 'SYNC_FAILED_ORDERS',
         TOKEN_CHECK: 'TOKEN_CHECK'
     }
-    static BILLING_PLAN_KEYS = {
-        BASIC: 'basic',
-        COMMUNITY: 'community',
-        ENTERPRISE: 'enterprise'
-    }
     static BILLING_PLANS = {
         BASIC: {
             KEY: 'basic',
