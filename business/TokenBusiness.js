@@ -41,7 +41,10 @@ export default class TokenBusiness extends CoreClass {
     checkTenantTokenAvailability = async tokenAmount => {
         await this.clearUsage();
 
-        if ((this.tenant.shopify.billing.tokenLimit <= this.tenant.shopify.billing.tokenUsed + tokenAmount) && this.tenant.shopify.billing.planKey !== SystemCodes.BILLING_PLANS.ENTERPRISE.KEY) 
+        this.logger.info2(`Token check - Plan: ${this.tenant.shopify.billing.planKey}, Limit: ${this.tenant.shopify.billing.tokenLimit}, Used: ${this.tenant.shopify.billing.tokenUsed}, Requested: ${tokenAmount}`);
+
+        if ((this.tenant.shopify.billing.tokenLimit <= this.tenant.shopify.billing.tokenUsed + tokenAmount) 
+            && this.tenant.shopify.billing.planKey !== SystemCodes.BILLING_PLANS.ENTERPRISE.KEY) 
             this.throws("Token limit exceed", true);
     }
 
