@@ -20,6 +20,6 @@ export default new class NebimConnectionController extends CoreController {
             return this.response(res, { status: HttpStatusCodes.BAD_REQUEST, info: exception });
         }
         
-        return this.response(res, { status: HttpStatusCodes.SUCCESS, info: "Connection to Nebim V3 Integrator is successfully created", content: await nebimAPI.getUserInfo() });
+        return this.response(res, { status: HttpStatusCodes.SUCCESS, info: "Connection to Nebim V3 Integrator is successfully created", content: await nebimAPI.getUserInfo(req.body.host) });
     }
 }
