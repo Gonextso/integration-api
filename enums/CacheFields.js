@@ -1,7 +1,8 @@
 export default {
     SYSTEM: {
         SYNC_ORDER_LOCK: "SyncLockOrders",
-        SYNC_CANCEL_ORDER_LOCK: "SyncCancelLockOrders"
+        SYNC_CANCEL_ORDER_LOCK: "SyncCancelLockOrders",
+        ACTIVE_USING_TOKENS: "ActiveUsingTokens"
     },
     NEBIM: {
         ADDRESS_CODES: 'AddressCodes'
