@@ -16,7 +16,6 @@ export default class NebimOrderBusiness extends CoreClass {
         this.cache = new NebimCache(tenant);
         this.api = new NebimV3IntegratorAPI(tenant);
         this.customerBusiness = new NebimCustomerBusiness(tenant);
-        this.tokenBusiness = new TokenBusiness(tenant);
     }
 
     cacheDefaults = async (force = false) => {
@@ -58,9 +57,10 @@ export default class NebimOrderBusiness extends CoreClass {
             let customer = {};
 
             promises.push(SystemHelper.createTransaction(this.tenant, transaction, async () => {
+                const tokenBusiness = new TokenBusiness(this.tenant);
                 let orderNumber = "";
                 try {
-                    await this.tokenBusiness.checkTenantTokenAvailability(1) //TODO: order token
+                    await tokenBusiness.checkTenantTokenAvailability(1) //TODO: order token
                 } catch (error) {
                     return {
                         ok: false,
@@ -95,7 +95,7 @@ export default class NebimOrderBusiness extends CoreClass {
     
                     orderNumber = orderResponse.OrderNumber;
 
-                    await this.tokenBusiness.useToken(1) //TODO:order token
+                    await tokenBusiness.useToken(1) //TODO:order token
 
                     return {
                         ok: true,
