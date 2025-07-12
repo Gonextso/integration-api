@@ -31,15 +31,24 @@ export default class NebimV3IntegratorAPI extends CoreAPI {
             return response.data["Exception"]
         }
 
+        let accessToken = response.data["Token"];
+        const now = new Date();
+
+        if (!accessToken) this.throws("Something went wrong while connecting Nebim V3 Integrator");
+
+        await this.cache.set("Token", { token: accessToken, expiryDate: new Date(now.getTime() + 24 * 60 * 60 * 1000) });
+
         return ""
     }
 
-    connectionProvider = async exec => {
+    connectionProvider = async (exec, host) => {
         let response;
         let tokenData = await this.cache.get("Token");
 
         if(!tokenData || tokenData.expiryDate < Date.now()) {
-            response = await this.httpRequest.post(`${this.tenant.nebim.host}/IntegratorService/Connect`, {
+            this.logger.info2(`Getting token from Nebim V3 Integrator from ${host ?? this.tenant.nebim.host}`);
+
+            response = await this.httpRequest.post(`${host ?? this.tenant.nebim.host}/IntegratorService/Connect`, {
                 UserGroupCode: this.tenant.nebim.userGroup,
                 UserName: this.tenant.nebim.user,
                 Password: CryptoHelper.decrypt(this.tenant.nebim.password),
@@ -126,5 +135,5 @@ export default class NebimV3IntegratorAPI extends CoreAPI {
         });
 
         return response.data;
-    })
+    }, host)
 }
