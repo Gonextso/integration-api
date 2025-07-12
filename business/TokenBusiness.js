@@ -2,13 +2,10 @@ import CoreClass from "../core/CoreClass.js";
 import SystemCodes from "../enums/SystemCodes.js";
 import SuccessOrder from "../models/db/SuccessOrder.js";
 import Tenant from "../models/db/Tenant.js";
-import SystemCache from "../cache/SystemCache.js";
-import CacheFields from "../enums/CacheFields.js";
 
 export default class TokenBusiness extends CoreClass {
     constructor(tenant) {
         super(tenant);
-        this.systemCache = new SystemCache(tenant);
     }
 
     clearUsage = async _ => {
@@ -43,15 +40,12 @@ export default class TokenBusiness extends CoreClass {
 
     checkTenantTokenAvailability = async tokenAmount => {
         await this.clearUsage();
-        const activelyUsedTokensCount = await this.systemCache.get(CacheFields.SYSTEM.ACTIVE_USING_TOKENS) ?? 0;
 
-        this.logger.info2(`Token check - Plan: ${this.tenant.shopify.billing.planKey}, Limit: ${this.tenant.shopify.billing.tokenLimit}, Active: ${activelyUsedTokensCount}, Requested: ${tokenAmount}`);
+        this.logger.info2(`Token check - Plan: ${this.tenant.shopify.billing.planKey}, Limit: ${this.tenant.shopify.billing.tokenLimit}, Used: ${this.tenant.shopify.billing.tokenUsed}, Requested: ${tokenAmount}`);
 
-        if ((this.tenant.shopify.billing.tokenLimit <= activelyUsedTokensCount + tokenAmount) 
+        if ((this.tenant.shopify.billing.tokenLimit <= this.tenant.shopify.billing.tokenUsed + tokenAmount) 
             && this.tenant.shopify.billing.planKey !== SystemCodes.BILLING_PLANS.ENTERPRISE.KEY) 
             this.throws("Token limit exceed", true);
-
-        await this.systemCache.set(CacheFields.SYSTEM.ACTIVE_USING_TOKENS, activelyUsedTokensCount + tokenAmount);
     }
 
     useToken = async tokenAmount => {
