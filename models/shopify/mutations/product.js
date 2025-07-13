@@ -1,32 +1,24 @@
 export default {
     sync: `
-mutation createProductAsynchronous($productSet: ProductSetInput!, $synchronous: Boolean!) {
+mutation createProductAsynchronous(
+  $productSet: ProductSetInput!
+  $synchronous: Boolean!
+) {
   productSet(synchronous: $synchronous, input: $productSet) {
     product {
       id
-      category {
-        id
-      }
-      variants(first: 250) {
-        nodes {
-            id
-        }
+      category { id }
+      variants(first: 250) { nodes { id } }
+      metafields(first: 250) {
+        edges { node { namespace key value } }
       }
     }
     productSetOperation {
       id
       status
-      userErrors {
-        code
-        field
-        message
-      }
+      userErrors { field message }
     }
-    userErrors {
-      code
-      field
-      message
-    }
+    userErrors { field message }
   }
 }`,
     create: `

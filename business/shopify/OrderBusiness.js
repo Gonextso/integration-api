@@ -56,7 +56,6 @@ export default class ShopifyOrderBusiness extends CoreClass {
                 ? id
                 : `gid://shopify/Order/${id}`;
 
-        // Split the incoming array into chunks of 250
         const chunks = [];
         for (let i = 0; i < orderIds.length; i += MAX_IDS_PER_CALL) {
             chunks.push(orderIds.slice(i, i + MAX_IDS_PER_CALL));
@@ -87,43 +86,26 @@ export default class ShopifyOrderBusiness extends CoreClass {
         return ShopifyObjectHelper.getOrderList(allOrders);
     }
 
-    /**
-     * Update ERP ID metadata for Shopify orders using ecommerceId (Shopify order ID) and erpId (ERP order ID)
-     * @param {Array<Object>} orderMappings - Array of objects with ecommerceId (Shopify order ID) and erpId (ERP order ID)
-     * @param {string} namespace - Metadata namespace (default: 'erp')
-     * @param {string} key - Metadata key (default: 'id')
-     * @returns {Promise<Array>} - Results of metadata update operations
-     */
+
     updateErpMetadataForOrders = async (orderMappings = [], namespace = 'erp', key = 'id') => {
         if (!Array.isArray(orderMappings) || orderMappings.length === 0) {
             return [];
         }
 
-        // Transform the mappings to use ecommerceId as orderId
         const orderErpMappings = orderMappings.map(mapping => ({
-            orderId: mapping.ecommerceId, // Shopify order ID
-            erpId: mapping.erpId // ERP order ID
+            orderId: mapping.ecommerceId,
+            erpId: mapping.erpId
         }));
 
         return await this.sendErpIdsToMetadataBatch(orderErpMappings, namespace, key);
     }
 
-    /**
-     * Sends ERP ID to Shopify order metadata
-     * @param {string} orderId - Shopify order ID (can be with or without gid://shopify/Order/ prefix)
-     * @param {string} erpId - ERP system ID to store in metadata
-     * @param {string} namespace - Metadata namespace (default: 'erp')
-     * @param {string} key - Metadata key (default: 'id')
-     * @returns {Promise<Object>} - Result of the metadata update operation
-     */
-    sendErpIdToMetadata = async (orderId, erpId, namespace = 'erp', key = 'id') => {
+    sendErpIdToMetadata = async (orderId, erpId, namespace = 'gonextso_nebim_app', key = 'order_id') => {
         try {
-            // Normalize order ID to include gid://shopify/Order/ prefix if not present
             const normalizedOrderId = orderId.startsWith('gid://shopify/Order/') 
                 ? orderId 
                 : `gid://shopify/Order/${orderId}`;
 
-            // Prepare order update input with metafields
             const orderUpdateInput = {
                 id: normalizedOrderId,
                 metafields: [
@@ -136,7 +118,6 @@ export default class ShopifyOrderBusiness extends CoreClass {
                 ]
             };
 
-            // Execute the orderUpdate mutation with metafields
             const data = await this.api.query(orderMutations.updateOrderWithMetafields, {
                 input: orderUpdateInput
             });
@@ -167,14 +148,7 @@ export default class ShopifyOrderBusiness extends CoreClass {
         }
     }
 
-    /**
-     * Batch update ERP IDs for multiple orders
-     * @param {Array<Object>} orderErpMappings - Array of objects with orderId and erpId
-     * @param {string} namespace - Metadata namespace (default: 'erp')
-     * @param {string} key - Metadata key (default: 'id')
-     * @returns {Promise<Array>} - Results of all metadata update operations
-     */
-    sendErpIdsToMetadataBatch = async (orderErpMappings, namespace = 'erp', key = 'id') => {
+    sendErpIdsToMetadataBatch = async (orderErpMappings, namespace = 'gonextso_nebim_app', key = 'order_id') => {
         const results = [];
         
         for (const mapping of orderErpMappings) {
