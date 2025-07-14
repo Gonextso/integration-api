@@ -8,7 +8,8 @@ import NebimObjectHelper from "../../helpers/NebimObjectHelper.js";
 import FailedOrder from "../../models/db/FailedOrder.js";
 import SystemCodes from "../../enums/SystemCodes.js";
 import SuccessOrder from "../../models/db/SuccessOrder.js";
-import TokenBusiness from "../TokenBusiness.js";
+import LimitBusiness from "../LimitBusiness.js";
+import Tenant from "../../models/db/Tenant.js";
 
 export default class NebimOrderBusiness extends CoreClass {
     constructor(tenant) {
@@ -32,113 +33,206 @@ export default class NebimOrderBusiness extends CoreClass {
 
     createOrders = async (orderList, dontSkipFailedOrders = false) => {
         const promises = [];
-        let skippedFailedOrderCount = 0;
-        let skippedAlreadySyncedOrders = 0;
+        let skippedFailedOrderCount = 0, skippedAlreadySyncedOrders = 0;
+        let successOrders = [], failedOrders = [];
 
-        for (const order of orderList.filter(x => !x.is_cancelled)) {
-            const isFailedOrderExists = Boolean(await FailedOrder.findOne({ ecommerceId: order.order_id, isCancelled: false }));
+        if (this.tenant.shopify.billing.planKey === SystemCodes.BILLING_PLANS.ENTERPRISE.KEY) {
+            for (const order of orderList.filter(x => !x.is_cancelled)) {
+                const isFailedOrderExists = Boolean(await FailedOrder.findOne({ ecommerceId: order.order_id, isCancelled: false }));
 
-            const isOrderSynced = Boolean(
-                await SuccessOrder.findOne({ ecommerceId: order.order_id, tenant: this.tenant._id, ecommerce: order.platform, erp: SystemCodes.ERP.V3_INTEGRATOR, isCancelled: false })
-            );
+                const isOrderSynced = Boolean(
+                    await SuccessOrder.findOne({ ecommerceId: order.order_id, tenant: this.tenant._id, ecommerce: order.platform, erp: SystemCodes.ERP.V3_INTEGRATOR, isCancelled: false })
+                );
 
-            if (isOrderSynced) {
-                skippedAlreadySyncedOrders++
-                continue;
-            }
-            
-            if (isFailedOrderExists && !dontSkipFailedOrders) {
-                skippedFailedOrderCount++
-                continue;
-            }
-            
+                if (isOrderSynced) {
+                    skippedAlreadySyncedOrders++
+                    continue;
+                }
 
-            const transaction = `${CacheFields.SYSTEM.SYNC_ORDER_LOCK}:${order.order_id}`;
-            let customer = {};
+                if (isFailedOrderExists && !dontSkipFailedOrders) {
+                    skippedFailedOrderCount++
+                    continue;
+                }
 
-            promises.push(SystemHelper.createTransaction(this.tenant, transaction, async () => {
-                const tokenBusiness = new TokenBusiness(this.tenant);
-                let orderNumber = "";
-                try {
-                    await tokenBusiness.checkTenantTokenAvailability(1) //TODO: order token
-                } catch (error) {
-                    return {
-                        ok: false,
-                        reason: error.message,
-                        ecommerceId: order.order_id,
-                        process: SystemCodes.PROCESS.TOKEN_CHECK,
-                        orderData: {
-                            shopifyId: order.shopify_id
+                const transaction = `${CacheFields.SYSTEM.SYNC_ORDER_LOCK}:${order.order_id}`;
+                let customer = {};
+
+                promises.push(SystemHelper.createTransaction(this.tenant, transaction, async () => {
+                    const limitBusiness = new LimitBusiness(await Tenant.findById(this.tenant._id));
+                    let orderNumber = "";
+
+                    try {
+                        customer = await this.customerBusiness.syncCustomerFromOrder(order);
+                    } catch (error) {
+                        this.logger.error(new Error(`Error on transactionId:${transaction} - msg:${error.message} - stack:${error.stack}`));
+
+                        return {
+                            ok: false,
+                            reason: error.message,
+                            ecommerceId: order.order_id,
+                            process: SystemCodes.PROCESS.SYNC_CUSTOMER,
+                            orderData: {
+                                shopifyId: order.shopify_id
+                            }
                         }
                     }
-                }
 
+                    try {
+                        const orderResponse = await this.#createOrder(order, customer);
 
-                try {
-                    customer = await this.customerBusiness.syncCustomerFromOrder(order);
-                } catch (error) {
-                    this.logger.error(new Error(`Error on transactionId:${transaction} - msg:${error.message} - stack:${error.stack}`));
-    
-                    return {
-                        ok: false,
-                        reason: error.message,
-                        ecommerceId: order.order_id,
-                        process: SystemCodes.PROCESS.SYNC_CUSTOMER,
-                        orderData: {
-                            shopifyId: order.shopify_id
+                        orderNumber = orderResponse.OrderNumber;
+
+                        await limitBusiness.useLimit(SystemCodes.LIMIT_TYPE.ORDER, 1) //TODO:order token
+
+                        return {
+                            ok: true,
+                            erpId: orderNumber,
+                            ecommerceId: order.order_id,
+                            shopifyId: order.shopify_id,
+                            lines: orderResponse.Lines.map(x => ({ erpLineId: x.LineID, quantity: x.Qty1, barcode: x.UsedBarcode, amount: x.LineAmount })),
+                            partiallyCancelledLines: order.lines.filter(x => x.remaining_quantity).map(x => ({ barcode: x.barcode, quantity: x.remaining_quantity })),
+                            isCancelled: false,
+                            isPartiallyCancelled: order.lines.some(x => x.remaining_quantity)
+                        }; //TODO: fix partially cancelled business. not send lines accepts as canceled needs to be considered
+
+                    } catch (error) {
+                        this.logger.error(new Error(`Error on transactionId:${transaction} - msg:${error.message} - stack:${error.stack}`));
+
+                        return {
+                            ok: false,
+                            orderData: {
+                                shopifyId: order.shopify_id
+                            },
+                            reason: error.message,
+                            ecommerceId: order.order_id,
+                            process: SystemCodes.PROCESS.SYNC_ORDERS
                         }
                     }
+                }));
+            }
+
+            const settled = await Promise.allSettled(promises);
+
+            successOrders = settled
+                .filter(r => r.status === 'fulfilled' && r.value && r.value.ok)
+                .map(r => r.value);
+            failedOrders = settled
+                .filter(r => r.status === 'fulfilled' && r.value && !r.value.ok)
+                .map(r => r.value);
+
+            if (skippedFailedOrderCount) {
+                this.logger.info2(`Skipped ${skippedFailedOrderCount} failed orders`);
+            }
+
+            if (skippedAlreadySyncedOrders) {
+                this.logger.info2(`Skipped ${skippedAlreadySyncedOrders} already synced orders`);
+            }
+        } else {
+            for (const order of orderList.filter(x => !x.is_cancelled)) {
+                const isFailedOrderExists = Boolean(await FailedOrder.findOne({ ecommerceId: order.order_id, isCancelled: false }));
+
+                if (isFailedOrderExists && !dontSkipFailedOrders) {
+                    skippedFailedOrderCount++
+                    continue;
                 }
 
-                try {
-                    const orderResponse = await this.#createOrder(order, customer);
-    
-                    orderNumber = orderResponse.OrderNumber;
+                const isOrderSynced = Boolean(
+                    await SuccessOrder.findOne({ ecommerceId: order.order_id, tenant: this.tenant._id, ecommerce: order.platform, erp: SystemCodes.ERP.V3_INTEGRATOR, isCancelled: false })
+                );
 
-                    await tokenBusiness.useToken(1) //TODO:order token
+                if (isOrderSynced) {
+                    skippedAlreadySyncedOrders++
+                    continue;
+                }
 
-                    return {
-                        ok: true,
-                        erpId: orderNumber,
-                        ecommerceId: order.order_id,
-                        shopifyId: order.shopify_id,
-                        lines: orderResponse.Lines.map(x => ({ erpLineId: x.LineID, quantity: x.Qty1, barcode: x.UsedBarcode, amount: x.LineAmount })),
-                        partiallyCancelledLines: order.lines.filter(x => x.remaining_quantity).map(x => ({ barcode: x.barcode, quantity: x.remaining_quantity })),
-                        isCancelled: false,
-                        isPartiallyCancelled: order.lines.some(x => x.remaining_quantity)
-                    }; //TODO: fix partially cancelled business. not send lines accepts as canceled needs to be considered
+                if (isFailedOrderExists && !dontSkipFailedOrders) {
+                    skippedFailedOrderCount++
+                    continue;
+                }
 
-                } catch (error) {
-                    this.logger.error(new Error(`Error on transactionId:${transaction} - msg:${error.message} - stack:${error.stack}`));
-
-                    return {
-                        ok: false,
-                        orderData: {
-                            shopifyId: order.shopify_id
-                        },
-                        reason: error.message,
-                        ecommerceId: order.order_id,
-                        process: SystemCodes.PROCESS.SYNC_ORDERS
+                const transaction = `${CacheFields.SYSTEM.SYNC_ORDER_LOCK}:${order.order_id}`;
+                let customer = {};
+                
+                const result = await SystemHelper.createTransaction(this.tenant, transaction, async () => {
+                    const limitBusiness = new LimitBusiness(await Tenant.findById(this.tenant._id));
+                    let orderNumber = "";
+                    try {
+                        await limitBusiness.checkLimitAvailability(SystemCodes.LIMIT_TYPE.ORDER, 1) //TODO: order token
+                    } catch (error) {
+                        return {
+                            ok: false,
+                            reason: error.message,
+                            ecommerceId: order.order_id,
+                            process: SystemCodes.PROCESS.TOKEN_CHECK,
+                            orderData: {
+                                shopifyId: order.shopify_id
+                            }
+                        }
                     }
+
+                    try {
+                        customer = await this.customerBusiness.syncCustomerFromOrder(order);
+                    } catch (error) {
+                        this.logger.error(new Error(`Error on transactionId:${transaction} - msg:${error.message} - stack:${error.stack}`));
+
+                        return {
+                            ok: false,
+                            reason: error.message,
+                            ecommerceId: order.order_id,
+                            process: SystemCodes.PROCESS.SYNC_CUSTOMER,
+                            orderData: {
+                                shopifyId: order.shopify_id
+                            }
+                        }
+                    }
+
+                    try {
+                        const orderResponse = await this.#createOrder(order, customer);
+
+                        orderNumber = orderResponse.OrderNumber;
+
+                        await limitBusiness.useLimit(SystemCodes.LIMIT_TYPE.ORDER, 1) //TODO:order token
+
+                        return {
+                            ok: true,
+                            erpId: orderNumber,
+                            ecommerceId: order.order_id,
+                            shopifyId: order.shopify_id,
+                            lines: orderResponse.Lines.map(x => ({ erpLineId: x.LineID, quantity: x.Qty1, barcode: x.UsedBarcode, amount: x.LineAmount })),
+                            partiallyCancelledLines: order.lines.filter(x => x.remaining_quantity).map(x => ({ barcode: x.barcode, quantity: x.remaining_quantity })),
+                            isCancelled: false,
+                            isPartiallyCancelled: order.lines.some(x => x.remaining_quantity)
+                        }; //TODO: fix partially cancelled business. not send lines accepts as canceled needs to be considered
+
+                    } catch (error) {
+                        this.logger.error(new Error(`Error on transactionId:${transaction} - msg:${error.message} - stack:${error.stack}`));
+
+                        return {
+                            ok: false,
+                            orderData: {
+                                shopifyId: order.shopify_id
+                            },
+                            reason: error.message,
+                            ecommerceId: order.order_id,
+                            process: SystemCodes.PROCESS.SYNC_ORDERS
+                        }
+                    }
+                })
+
+                if (result.ok) {
+                    successOrders.push(result);
+                } else {
+                    failedOrders.push(result);
                 }
-            }));
-        }
+            }
+            
+            if (skippedFailedOrderCount) {
+                this.logger.info2(`Skipped ${skippedFailedOrderCount} failed orders`);
+            }
 
-        const settled = await Promise.allSettled(promises);
-
-        const successOrders = settled
-            .filter(r => r.status === 'fulfilled' && r.value && r.value.ok)
-            .map(r => r.value);
-        const failedOrders  = settled
-            .filter(r => r.status === 'fulfilled' && r.value && !r.value.ok)
-            .map(r => r.value);
-
-        if (skippedFailedOrderCount) {
-            this.logger.info2(`Skipped ${skippedFailedOrderCount} failed orders`);
-        }
-
-        if (skippedAlreadySyncedOrders) {
-            this.logger.info2(`Skipped ${skippedAlreadySyncedOrders} already synced orders`);
+            if (skippedAlreadySyncedOrders) {
+                this.logger.info2(`Skipped ${skippedAlreadySyncedOrders} already synced orders`);
+            }
         }
 
         return {
@@ -164,12 +258,12 @@ export default class NebimOrderBusiness extends CoreClass {
                 skippedNotSyncedCancelOrders++
                 continue;
             }
-            
+
             if (createdOrder.isCancelled) {
                 skippedAlreadySyncedOrders++
                 continue;
             }
-            
+
             if (isFailedOrderExists && !dontSkipFailedOrders) {
                 skippedFailedOrderCount++
                 continue;
@@ -192,10 +286,10 @@ export default class NebimOrderBusiness extends CoreClass {
                         shopifyId: order.shopify_id,
                         isCancelled: true
                     };
-    
+
                 } catch (error) {
                     this.logger.error(new Error(`Error on transactionId:${transaction} - msg:${error.message} - stack:${error.stack}`));
-    
+
                     return {
                         ok: false,
                         orderData: {
@@ -214,7 +308,7 @@ export default class NebimOrderBusiness extends CoreClass {
         const successOrders = settled
             .filter(r => r.status === 'fulfilled' && r.value && r.value.ok)
             .map(r => r.value);
-        const failedOrders  = settled
+        const failedOrders = settled
             .filter(r => r.status === 'fulfilled' && r.value && !r.value.ok)
             .map(r => r.value);
 
@@ -238,7 +332,7 @@ export default class NebimOrderBusiness extends CoreClass {
             failedOrders
         }
     }
-        
+
 
     #createOrder = async (order, nebimCustomer) => {
         return this.api.post(NebimObjectHelper.toNebimOrder(this.tenant, order, nebimCustomer), { "IdemPotent-Key": order.order_id });

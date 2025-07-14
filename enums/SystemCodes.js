@@ -12,41 +12,34 @@ export default class {
         SYNC_FAILED_ORDERS: 'SYNC_FAILED_ORDERS',
         TOKEN_CHECK: 'TOKEN_CHECK'
     }
+    static LIMIT_TYPE = {
+        ORDER: 'order',
+        PRODUCT_DETAILS: 'product_details'
+    }
     static BILLING_PLANS = {
         BASIC: {
             KEY: 'BASIC',
-            DESCRIPTION: 'Başlangıç ve uygulamanın test edilmesi için ideal bir plan',
-            DETAILS: [
-                "7 günlük log kaydı",
-                "5 sipariş aktarımı"
-            ],
-            PRICE: 0,
-            DISCOUNTED_PRICE: 0,
-            CURRENCY: 'USD'
+            TOKEN_LIMIT: 5,
+            LIMITS: {
+                ORDER: 10,
+                PRODUCT_DETAILS: 1000
+            }
         },
         COMMUNITY: {
             KEY: 'COMMUNITY',
-            DESCRIPTION: 'Orta ölçekli işletmeler için tavsiye edilen plan',
-            DETAILS: [
-                "7 günlük log kaydı",
-                "500 sipariş aktarımı"
-            ],
-            PRICE: 129.99,
-            DISCOUNTED_PRICE: 99.99,
-            CURRENCY: 'USD'
+            TOKEN_LIMIT: 500,
+            LIMITS: {
+                ORDER: 500,
+                PRODUCT_DETAILS: 5000
+            }
         },
         ENTERPRISE: {
             KEY: 'ENTERPRISE',
-            DESCRIPTION: 'Kesintisiz destek alabileceğiniz destek portalı ile birlikte uygulamayı limitsiz kullanabileceğiniz plan',
-            DETAILS: [
-                "30 günlük log kaydı",
-                "Sınırsız sipariş aktarımı",
-                "Uygulama içi destek/talep portalı",
-                "Aktarım sıklıkları ayarlanabilir"
-            ],
-            PRICE: 269.99,
-            DISCOUNTED_PRICE: 249.99,
-            CURRENCY: 'USD'
+            TOKEN_LIMIT: 0,
+            LIMITS: {
+                ORDER: 0,
+                PRODUCT_DETAILS: 0
+            }
         }
     }
 }
