@@ -259,7 +259,8 @@ ${bodyBeautified}
                             syncBatchId: orderSyncBatch._id,
                             traceId: this.traceId,
                             reason: failedOrder.reason,
-                            process: failedOrder.process
+                            process: failedOrder.process,
+                            updatedAt: new Date()
                         }
                     },
                     { upsert: true, new: true, setDefaultsOnInsert: true }

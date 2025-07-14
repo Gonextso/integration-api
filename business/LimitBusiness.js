@@ -3,13 +3,14 @@ import SystemCodes from "../enums/SystemCodes.js";
 import SuccessOrder from "../models/db/SuccessOrder.js";
 import Tenant from "../models/db/Tenant.js";
 
-export default class TokenBusiness extends CoreClass {
+export default class LimitBusiness extends CoreClass {
     constructor(tenant) {
         super(tenant);
     }
 
-    clearUsage = async _ => {
+    clearUsage = async (limitType) => {
         const oneMonthAgo = new Date();
+        limitType = limitType.toUpperCase();
         oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
 
         const expiredOrders = await SuccessOrder.find({
@@ -25,9 +26,9 @@ export default class TokenBusiness extends CoreClass {
 
         if (tokensToSubtract > 0) {
             const tenant = await Tenant.findById(this.tenant._id);
-            tenant.shopify.billing.tokenUsed = Math.max(
+            tenant.shopify.billing.limits[SystemCodes.LIMIT_TYPE[limitType]].used = Math.max(
                 0,
-                tenant.shopify.billing.tokenUsed - tokensToSubtract
+                tenant.shopify.billing.limits[SystemCodes.LIMIT_TYPE[limitType]].used - tokensToSubtract
             );
             await tenant.save();
 
@@ -38,20 +39,22 @@ export default class TokenBusiness extends CoreClass {
         }
     }
 
-    checkTenantTokenAvailability = async tokenAmount => {
-        await this.clearUsage();
+    checkLimitAvailability = async (limitType, limitAmount) => {
+        limitType = limitType.toUpperCase();
+        await this.clearUsage(limitType);
 
-        this.logger.info2(`Token check - Plan: ${this.tenant.shopify.billing.planKey}, Limit: ${this.tenant.shopify.billing.tokenLimit}, Used: ${this.tenant.shopify.billing.tokenUsed}, Requested: ${tokenAmount}`);
+        this.logger.info2(`Limit check - Plan: ${this.tenant.shopify.billing.planKey}, Limit: ${this.tenant.shopify.billing.limits[SystemCodes.LIMIT_TYPE[limitType]].limit}, Used: ${this.tenant.shopify.billing.limits[SystemCodes.LIMIT_TYPE[limitType]].used}, Requested: ${limitAmount}`);
 
-        if ((this.tenant.shopify.billing.tokenLimit <= this.tenant.shopify.billing.tokenUsed + tokenAmount) 
+        if ((this.tenant.shopify.billing.limits[SystemCodes.LIMIT_TYPE[limitType]].limit < this.tenant.shopify.billing.limits[SystemCodes.LIMIT_TYPE[limitType]].used + limitAmount) 
             && this.tenant.shopify.billing.planKey !== SystemCodes.BILLING_PLANS.ENTERPRISE.KEY) 
-            this.throws("Token limit exceed", true);
+            this.throws("Limit exceed", true);
     }
 
-    useToken = async tokenAmount => {
+    useLimit = async (limitType, limitAmount) => {
+        limitType = limitType.toUpperCase();
         const tenant = await Tenant.findById(this.tenant._id);
 
-        tenant.shopify.billing.tokenUsed += tokenAmount;
+        tenant.shopify.billing.limits[SystemCodes.LIMIT_TYPE[limitType]].used += limitAmount;
 
         await tenant.save()
     }

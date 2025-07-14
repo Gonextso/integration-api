@@ -87,7 +87,7 @@ export default class ShopifyOrderBusiness extends CoreClass {
     }
 
 
-    updateErpMetadataForOrders = async (orderMappings = [], namespace = 'erp', key = 'id') => {
+    updateErpMetadataForOrders = async (orderMappings = [], namespace = 'gonextso_nebim_app', key = 'order_id') => {
         if (!Array.isArray(orderMappings) || orderMappings.length === 0) {
             return [];
         }
