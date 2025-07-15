@@ -169,7 +169,7 @@ export default class OrderBusiness extends CoreClass {
             const { ecommerceId, traceId } = log;
             if (ecommerceId && !latestErrorsByEcomId.has(ecommerceId)) {
                 const requestLogBody = await RequestLog
-                    .findOne({ traceId })
+                    .findOne({ tenant: this.tenant._id, traceId })
                     .sort({ createdAt: -1 })
                     .select({ body: 1, _id: 0 })
                     .lean();
