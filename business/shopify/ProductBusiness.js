@@ -210,7 +210,7 @@ export default class ShopifyProductBusiness extends CoreClass {
                     if (this.tenant.shopify.isInventoryTracking) this.#setProductVariantsToTracked(data.data.productSet.product);
 
                     for (const variant of product.variants) {
-                        await SyncedBarcode.updateOne(
+                        const res = await SyncedBarcode.updateOne(
                             {
                                 barcode: variant.barcode,
                                 erp: SystemCodes.ERP.V3_INTEGRATOR,
@@ -227,6 +227,11 @@ export default class ShopifyProductBusiness extends CoreClass {
                             },
                             { upsert: true }
                         );
+
+                        if (res.upsertedCount) {
+                            const limitBusiness = new LimitBusiness(await Tenant.findById(this.tenant._id));
+                            await limitBusiness.useLimit(SystemCodes.LIMIT_TYPE.PRODUCT_DETAILS, 1);
+                        }
                     }
                 });
             }

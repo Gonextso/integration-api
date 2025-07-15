@@ -38,7 +38,7 @@ export default class NebimOrderBusiness extends CoreClass {
 
         if (this.tenant.shopify.billing.planKey === SystemCodes.BILLING_PLANS.ENTERPRISE.KEY) {
             for (const order of orderList.filter(x => !x.is_cancelled)) {
-                const isFailedOrderExists = Boolean(await FailedOrder.findOne({ ecommerceId: order.order_id, isCancelled: false }));
+                const isFailedOrderExists = Boolean(await FailedOrder.findOne({ tenant: this.tenant._id, ecommerceId: order.order_id, isCancelled: false }));
 
                 const isOrderSynced = Boolean(
                     await SuccessOrder.findOne({ ecommerceId: order.order_id, tenant: this.tenant._id, ecommerce: order.platform, erp: SystemCodes.ERP.V3_INTEGRATOR, isCancelled: false })
@@ -129,7 +129,7 @@ export default class NebimOrderBusiness extends CoreClass {
             }
         } else {
             for (const order of orderList.filter(x => !x.is_cancelled)) {
-                const isFailedOrderExists = Boolean(await FailedOrder.findOne({ ecommerceId: order.order_id, isCancelled: false }));
+                const isFailedOrderExists = Boolean(await FailedOrder.findOne({ tenant: this.tenant._id, ecommerceId: order.order_id, isCancelled: false }));
 
                 if (isFailedOrderExists && !dontSkipFailedOrders) {
                     skippedFailedOrderCount++
@@ -250,7 +250,7 @@ export default class NebimOrderBusiness extends CoreClass {
         let skippedNotSyncedCancelOrders = 0;
 
         for (const order of orderList.filter(x => x.is_cancelled)) {
-            const isFailedOrderExists = Boolean(await FailedOrder.findOne({ ecommerceId: order.order_id, isCancelled: true }));
+            const isFailedOrderExists = Boolean(await FailedOrder.findOne({ tenant: this.tenant._id, ecommerceId: order.order_id, isCancelled: true }));
 
             const createdOrder = await SuccessOrder.findOne({ ecommerceId: order.order_id, tenant: this.tenant._id, ecommerce: order.platform, erp: SystemCodes.ERP.V3_INTEGRATOR })
 
