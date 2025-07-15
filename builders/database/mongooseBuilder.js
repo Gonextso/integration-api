@@ -5,6 +5,7 @@ import OrderSyncBatch from '../../models/db/OrderSyncBatch.js';
 import Tenant from '../../models/db/Tenant.js';
 import SuccessOrder from '../../models/db/SuccessOrder.js';
 import RequestLog from '../../models/db/RequestLog.js';
+import SyncedBarcode from '../../models/db/SyncedBarcode.js';
 
 const logger = new LogHelper();
 
@@ -19,6 +20,7 @@ mongoose.connect(process.env.MONGO_URI)
         await Tenant.syncIndexes();
         await SuccessOrder.syncIndexes();
         await RequestLog.syncIndexes();
+        await SyncedBarcode.syncIndexes();
     })
     .catch(err => {
         logger.error(err);
