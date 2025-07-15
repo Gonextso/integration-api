@@ -26,4 +26,8 @@ export default new class SystemHelper extends CoreClass {
 
         return result;
     }
+
+    wait = (ms) => {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
 }

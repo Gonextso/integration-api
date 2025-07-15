@@ -16,7 +16,6 @@ export default class ShopifyInventoryBusiness extends CoreClass {
         const locations = await this.store.fetchLocations();
 
         await this.#setInventory(ids, inventoryList, locations[0].node.id)
-
     }
 
     #fetchInventoryIds = async () => {
