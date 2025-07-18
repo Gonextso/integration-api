@@ -7,10 +7,32 @@ export default class ShopifyObjectHelper extends CoreClass {
     }
 
     static getOrderList = (orderList) => {
+        const buildLines = (x) => {
+            const fulfillmentLineMap = new Map();
+
+            for (const fo of x.fulfillmentOrders.nodes ?? []) {
+                for (const li of fo.lineItems.nodes ?? []) {
+                    const barcode = li.lineItem.variant?.barcode;
+                    if (barcode && !fulfillmentLineMap.has(barcode)) {
+                        fulfillmentLineMap.set(barcode, `${SystemCodes.PREFIXES.SHOPIFY_FULFILLMENT_ORDER_IDS}.${fo.id.replace('gid://shopify/FulfillmentOrder/', '')}.${li.id.replace('gid://shopify/FulfillmentOrderLineItem/', '')}`);
+                    }
+                }
+            }
+
+            return x.lineItems.nodes.map((y) => ({
+                sku: y.sku,
+                barcode: y.variant?.barcode ?? null,
+                quantity: y.refundableQuantity,
+                remaining_quantity: y.nonFulfillableQuantity,
+                line_discount: Number(y.totalDiscount ?? 0),
+                price: Number(y.originalUnitPrice),
+                line_id: fulfillmentLineMap.get(y.variant?.barcode ?? null) ?? null,
+            }));
+        }
+
         return orderList ? orderList.map(x => {
             return {
-                shopify_id: x.id,
-                order_id: x.name,
+                order_id: `${x.name}.${x.id}`,
                 order_date: new Date(x.createdAt).toISOString().split('T')[0],
                 last_discount: x.totalDiscounts - x.lineItems.nodes.reduce((x, y) => (Number(x.totalDiscount ?? 0) + Number(y.totalDiscount ?? 0)), 0),
                 payment: Number(x.netPayment),
@@ -31,19 +53,14 @@ export default class ShopifyObjectHelper extends CoreClass {
                     city: x.shippingAddress.city,
                     district: x.shippingAddress.address2,
                 },
-                lines: [
-                    ...x.lineItems.nodes.map(x => ({
-                        sku: x.sku,
-                        barcode: x.variant?.barcode,
-                        quantity: x.refundableQuantity,
-                        remaining_quantity: x.nonFulfillableQuantity,
-                        line_discount: Number(x.totalDiscount ?? 0),
-                        price: Number(x.originalUnitPrice)
-                    }))
-                ],
+                lines: buildLines(x),
                 tags: x.tags,
                 platform: SystemCodes.ECOMMERCE.SHOPIFY
             }
         }) : []
+    }
+
+    static getGid = (id, type) => {
+        return `gid://shopify/${type}/${id}`;
     }
 }

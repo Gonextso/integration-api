@@ -12,6 +12,19 @@ export default class {
         SYNC_FAILED_ORDERS: 'SYNC_FAILED_ORDERS',
         TOKEN_CHECK: 'TOKEN_CHECK'
     }
+    static NEBIM_ORDER_STATUS = {
+        ON_CARGO: 'ON-CARGO',
+        CANCELLED: 'CANCELLED',
+        INVOICED: 'INVOICED',
+        SHIPPED: 'SHIPPED',
+        INVOICE_RETURNED: 'INVOICE-RETURNED'
+    }
+    static DEFINITIONS = {
+        NO_TRACKING_NUMBER: 'NO_TRACKING_NUMBER'
+    }
+    static PREFIXES = {
+        SHOPIFY_FULFILLMENT_ORDER_IDS: 'shopify_fulfillment_order_ids'
+    }
     static LIMIT_TYPE = {
         ORDER: 'order',
         PRODUCT_DETAILS: 'product_details'

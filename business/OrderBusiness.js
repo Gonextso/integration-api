@@ -12,15 +12,15 @@ export default class OrderBusiness extends CoreClass {
         super(tenant);
     }
 
-    syncShopifyToNebim = async (startDate, endDate) => {        
+    syncShopifyToNebim = async (startDate, endDate) => {
         const shopifyOrderBusiness = new ShopifyOrderBusiness(this.tenant);
         const nebimOrderBusiness = new NebimOrderBusiness(this.tenant);
         const orderMetadataMapping = [];
-        
+
         const shopifyOrderList = await shopifyOrderBusiness.getOrders(startDate, endDate);
 
         if (!shopifyOrderList || (shopifyOrderList && !shopifyOrderList.length)) return;
-        
+
         await nebimOrderBusiness.cacheDefaults();
 
         const craeteOrderResults = await nebimOrderBusiness.createOrders(shopifyOrderList);
@@ -61,12 +61,11 @@ export default class OrderBusiness extends CoreClass {
                     erp: SystemCodes.ERP.V3_INTEGRATOR,
                     tenant: this.tenant._id,
                     traceId: this.traceId,
-                    orderData: failedOrder.orderData,
                     syncBatchId: orderSyncBatch._id,
                     reason: failedOrder.reason,
                     process: failedOrder.process
                 });
-                   
+
                 failedOrderDoc.save();
             }
         }
@@ -75,7 +74,7 @@ export default class OrderBusiness extends CoreClass {
             for (const successOrder of craeteOrderResults.successOrders) {
 
                 orderMetadataMapping.push({
-                    ecommerceId: successOrder.shopifyId,
+                    ecommerceId: successOrder.ecommerceId.split('.')[1],
                     erpId: successOrder.erpId
                 });
 
@@ -92,14 +91,14 @@ export default class OrderBusiness extends CoreClass {
                     isPartiallyCancelled: successOrder.isPartiallyCancelled,
                     erpId: successOrder.erpId
                 });
-                   
+
                 successOrderDoc.save();
             }
         }
 
-        if (orderMetadataMapping.length) {
+        if (orderMetadataMapping.length) { //TODO: there is 2 for loop for craeteOrderResults.successOrders merge them
             await shopifyOrderBusiness.updateErpMetadataForOrders(orderMetadataMapping);
-        }
+        } //TODO: handle errors happened and updateErpMetadataForOrders 
 
         const cancelOrders = await nebimOrderBusiness.cancelOrders(shopifyOrderList);
 
@@ -112,7 +111,6 @@ export default class OrderBusiness extends CoreClass {
                     ecommerce: SystemCodes.ECOMMERCE.SHOPIFY,
                     tenant: this.tenant._id,
                     traceId: this.traceId,
-                    orderData: failedOrder.orderData,
                     syncBatchId: orderSyncBatch._id,
                     reason: failedOrder.reason,
                     process: failedOrder.process,
@@ -136,7 +134,7 @@ export default class OrderBusiness extends CoreClass {
                     isCancelled: successOrder.isCancelled,
                     erpId: successOrder.erpId
                 });
-                   
+
                 successOrderDoc.save();
             }
         }
@@ -164,7 +162,7 @@ export default class OrderBusiness extends CoreClass {
         const failedOrdersList = await FailedOrder.find(query).sort({ syncDate: -1 });
 
         const latestErrorsByEcomId = new Map();
-    
+
         for (const log of failedOrdersList) {
             const { ecommerceId, traceId } = log;
             if (ecommerceId && !latestErrorsByEcomId.has(ecommerceId)) {
@@ -187,8 +185,8 @@ export default class OrderBusiness extends CoreClass {
                     }
                 }
 
-                log.reason = 
-`
+                log.reason =
+                    `
 -------------------------------------
 Reason: 
 -------------------------------------
@@ -202,7 +200,7 @@ ${bodyBeautified}
                 latestErrorsByEcomId.set(ecommerceId, log);
             }
         }
-    
+
         return Array.from(latestErrorsByEcomId.values());
     }
 
@@ -218,7 +216,7 @@ ${bodyBeautified}
             isCancelled: false
         };
 
-        const failedOrderList  = await FailedOrder.find(createdQuery);
+        const failedOrderList = await FailedOrder.find(createdQuery);
 
         const orderSyncBatch = new OrderSyncBatch({
             request: {
@@ -242,9 +240,9 @@ ${bodyBeautified}
         if (failedOrderList.length) {
             this.logger.info(`${failedOrderList.length} failed orders found, sync started`);
 
-            const orderList = await shopifyOrderBusiness.getOrdersByIds(failedOrderList.map(x => x.orderData.shopifyId))
+            const orderList = await shopifyOrderBusiness.getOrdersByIds(failedOrderList.map(x => x.ecommerceId.split('.')[1]))
             const craeteOrderResults = await nebimOrderBusiness.createOrders(orderList, true);
-    
+
             for (const failedOrder of craeteOrderResults.failedOrders) {
                 FailedOrder.findOneAndUpdate(
                     {
@@ -255,7 +253,6 @@ ${bodyBeautified}
                     },
                     {
                         $set: {
-                            orderData: failedOrder.orderData,
                             syncBatchId: orderSyncBatch._id,
                             traceId: this.traceId,
                             reason: failedOrder.reason,
@@ -265,9 +262,9 @@ ${bodyBeautified}
                     },
                     { upsert: true, new: true, setDefaultsOnInsert: true }
                 )
-                .exec()
+                    .exec()
             }
-    
+
             if (craeteOrderResults.successOrders.length) {
                 for (const successOrder of craeteOrderResults.successOrders) {
                     const successOrderDoc = new SuccessOrder({
@@ -281,15 +278,15 @@ ${bodyBeautified}
                         isCancelled: successOrder.isCancelled,
                         erpId: successOrder.erpId
                     });
-                       
+
                     successOrderDoc.save();
                 }
             }
-    
+
             for (const successOrder of craeteOrderResults.successOrders) {
 
                 orderMetadataMapping.push({
-                    ecommerceId: successOrder.shopifyId,
+                    ecommerceId: successOrder.ecommerceId.split('.')[1],
                     erpId: successOrder.erpId
                 });
 
@@ -302,8 +299,9 @@ ${bodyBeautified}
                 }).exec();
             }
 
-            if (orderMetadataMapping.length) {
+            if (orderMetadataMapping.length) { //TODO: there is 2 for loop for craeteOrderResults.successOrders merge them
                 await shopifyOrderBusiness.updateErpMetadataForOrders(orderMetadataMapping);
+                //TODO: handle errors happened and updateErpMetadataForOrders 
             }
 
             orderSyncBatch.successList = craeteOrderResults.successOrders.map(x => (x.ecommerceId));
@@ -323,14 +321,14 @@ ${bodyBeautified}
             isCancelled: true
         };
 
-        const failedCancelOrderList  = await FailedOrder.find(cancelQuery);
+        const failedCancelOrderList = await FailedOrder.find(cancelQuery);
 
-        if  (failedCancelOrderList.length) {
+        if (failedCancelOrderList.length) {
             this.logger.info(`${failedCancelOrderList.length} failed cancel orders found, sync started`);
 
-            const cancelOrderList = await shopifyOrderBusiness.getOrdersByIds(failedCancelOrderList.map(x => x.orderData.shopifyId))
+            const cancelOrderList = await shopifyOrderBusiness.getOrdersByIds(failedCancelOrderList.map(x => x.ecommerceId.split('.')[1]))
             const cancelOrderResults = await nebimOrderBusiness.cancelOrders(cancelOrderList, true);
-    
+
             for (const failedOrder of cancelOrderResults.failedOrders) {
                 FailedOrder.findOneAndUpdate(
                     {
@@ -341,7 +339,6 @@ ${bodyBeautified}
                     },
                     {
                         $set: {
-                            orderData: failedOrder.orderData,
                             syncBatchId: orderSyncBatch._id,
                             traceId: this.traceId,
                             reason: failedOrder.reason,
@@ -350,9 +347,9 @@ ${bodyBeautified}
                     },
                     { upsert: true, new: true, setDefaultsOnInsert: true }
                 )
-                .exec()
+                    .exec()
             }
-    
+
             if (cancelOrderResults.successOrders.length) {
                 for (const successOrder of cancelOrderResults.successOrders) {
                     const successOrderDoc = new SuccessOrder({
@@ -366,11 +363,11 @@ ${bodyBeautified}
                         isCancelled: successOrder.isCancelled,
                         erpId: successOrder.erpId
                     });
-                       
+
                     successOrderDoc.save();
                 }
             }
-    
+
             for (const successOrder of cancelOrderResults.successOrders) {
                 FailedOrder.deleteOne({
                     ecommerceId: successOrder.ecommerceId,
@@ -384,12 +381,31 @@ ${bodyBeautified}
             orderSyncBatch.successList = [...orderSyncBatch.successList, ...cancelOrderResults.successOrders.map(x => (x.ecommerceId))];
             orderSyncBatch.failedList = [...orderSyncBatch.failedList, ...cancelOrderResults.failedOrders.map(x => (x.ecommerceId))];
             orderSyncBatch.isErrorLogExistsForThisBatch = cancelOrderResults.failedOrders.length > 0 || orderSyncBatch.isErrorLogExistsForThisBatch;
-            orderSyncBatch.totalFetchedOrderCount += failedCancelOrderList.length ;
+            orderSyncBatch.totalFetchedOrderCount += failedCancelOrderList.length;
             orderSyncBatch.skippedFailedOrderCount += cancelOrderResults.skippedFailedOrderCount;
             orderSyncBatch.cancelledOrderCount = cancelOrderResults.successOrders.length;
             orderSyncBatch.skippedAlreadySyncedOrderCount += cancelOrderResults.skippedAlreadySyncedOrders;
         }
 
         orderSyncBatch.save();
+    }
+
+    syncOrderStatus = async (startDate) => {
+        try {
+            this.logger.info(`Sync order status started for ${startDate}`);
+
+            const shopifyOrderBusiness = new ShopifyOrderBusiness(this.tenant);
+            const nebimOrderBusiness = new NebimOrderBusiness(this.tenant);
+
+            const orderStatusList = await nebimOrderBusiness.getOrderStatus(startDate);
+
+            await shopifyOrderBusiness.updateOrderFullfillmentStatus(orderStatusList)
+        } catch (error) {
+            this.logger.error(new Error(`Error syncing order status for ${startDate}, error: ${error.message}`));
+        } finally {
+            this.logger.info(`Sync order status finished for ${startDate}`);
+        }
+        //TODO: handle sync batches
+        //TODO: handle cancelled orders from erp not a big deal maybe wait for feature request
     }
 }

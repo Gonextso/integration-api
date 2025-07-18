@@ -3,6 +3,8 @@ import orderMutations from "../../models/shopify/mutations/order.js";
 import ShopifyObjectHelper from "../../helpers/ShopifyObjectHelper.js";
 import ShopifyGqlAPI from "../../apis/ShopifyGqlAPI.js";
 import CoreClass from "../../core/CoreClass.js";
+import SystemCodes from "../../enums/SystemCodes.js";
+import SuccessOrder from "../../models/db/SuccessOrder.js";
 
 export default class ShopifyOrderBusiness extends CoreClass {
     constructor(tenant) {
@@ -102,8 +104,8 @@ export default class ShopifyOrderBusiness extends CoreClass {
 
     sendErpIdToMetadata = async (orderId, erpId, namespace = 'gonextso_nebim_app', key = 'order_id') => {
         try {
-            const normalizedOrderId = orderId.startsWith('gid://shopify/Order/') 
-                ? orderId 
+            const normalizedOrderId = orderId.startsWith('gid://shopify/Order/')
+                ? orderId
                 : `gid://shopify/Order/${orderId}`;
 
             const orderUpdateInput = {
@@ -134,7 +136,7 @@ export default class ShopifyOrderBusiness extends CoreClass {
             }
 
             this.logger.info2(`Successfully set ERP ID metadata for order ${orderId}: ${erpId}`);
-            
+
             return {
                 success: true,
                 order: data.data?.orderUpdate?.order,
@@ -150,13 +152,13 @@ export default class ShopifyOrderBusiness extends CoreClass {
 
     sendErpIdsToMetadataBatch = async (orderErpMappings, namespace = 'gonextso_nebim_app', key = 'order_id') => {
         const results = [];
-        
+
         for (const mapping of orderErpMappings) {
             try {
                 const result = await this.sendErpIdToMetadata(
-                    mapping.orderId, 
-                    mapping.erpId, 
-                    namespace, 
+                    mapping.orderId,
+                    mapping.erpId,
+                    namespace,
                     key
                 );
                 results.push({ ...result, orderId: mapping.orderId });
@@ -171,4 +173,86 @@ export default class ShopifyOrderBusiness extends CoreClass {
 
         return results;
     }
+
+    //TODO: use it on order status shipped
+    updateOrderFullfillmentStatus = async (orders = {}) => {
+        if (!orders || Object.keys(orders).length === 0) {
+            return [];
+        }
+
+        const results = [];
+
+        for (const order of Object.values(orders)) {
+            try {
+                const successOrder = await SuccessOrder.findOne({ erpId: order.erpId, tenant: this.tenant._id });
+                if (!successOrder) {
+                    results.push({ success: false, orderId: order.ecommerceId, error: 'No synced success order found for this order.' });
+                    continue;
+                }
+
+                const fulfillmentOrdersResp = await this.api.query(orderQueries.fulfillmentOrdersByOrderId, { orderId: order.ecommerceId.split('.')[1].toLowerCase().replace('gid://shopify/order/', 'gid://shopify/Order/') });
+                if (fulfillmentOrdersResp.errors) {
+                    this.logger.error(new Error(`GraphQL Errors when fetching fulfillment orders: ${JSON.stringify(fulfillmentOrdersResp.errors)}`));
+                    results.push({ success: false, orderId: order.ecommerceId, error: fulfillmentOrdersResp.errors[0]?.message || 'Unknown error' });
+                    continue;
+                }
+                const fulfillmentOrders = fulfillmentOrdersResp.data?.order?.fulfillmentOrders?.nodes || [];
+                if (fulfillmentOrders.length === 0) {
+                    results.push({ success: false, orderId: order.ecommerceId, error: 'No fulfillment orders found for this order.' });
+                    continue;
+                }
+
+                const fulfillmentOrder = fulfillmentOrders[0];
+
+                const lineItemsByFulfillmentOrder = Object.keys(order.tracking).map(x => ({
+                    temp_tracking_number: x,
+                    fulfillmentOrderId: fulfillmentOrder.id,
+                    fulfillmentOrderLineItems: fulfillmentOrder.lineItems.nodes.filter(li => order.tracking[x].fullFillmentIds.split('.').includes(li.id.replace('gid://shopify/FulfillmentOrderLineItem/', '')) && order.tracking[x].fullFillmentIds.split('.').includes(fulfillmentOrder.id.replace('gid://shopify/FulfillmentOrder/', ''))).map(li => ({
+                        id: li.id,
+                        quantity: order.tracking[x].lines.reduce((sum, line) => sum + (line.shippedQuantity || 0), 0)
+                    }))
+                }));
+
+                for (const info of lineItemsByFulfillmentOrder) {
+                    const trackingInfo = {
+                        number: info.temp_tracking_number,
+                        url: order.tracking[info.temp_tracking_number]?.url
+                    }
+
+                    delete info.temp_tracking_number;
+
+                    const fulfillment = {
+                        lineItemsByFulfillmentOrder: [info],
+                        notifyCustomer: false //TODO: notify customer should come from tenant option
+                    };
+
+                    if (trackingInfo.number !== SystemCodes.DEFINITIONS.NO_TRACKING_NUMBER) {
+                        fulfillment.trackingInfo = trackingInfo;
+                    }
+
+                    const mutationResp = await this.api.query(orderMutations.fulfillmentCreate, { fulfillment });
+                    if (mutationResp.errors) {
+                        this.logger.error(new Error(`GraphQL Errors when creating fulfillment: ${JSON.stringify(mutationResp.errors)}`));
+                        results.push({ success: false, orderId: order.ecommerceId, error: mutationResp.errors[0]?.message || 'Unknown error' });
+                        continue;
+                    }
+                    const userErrors = mutationResp.data?.fulfillmentCreate?.userErrors;
+                    if (userErrors && userErrors.length > 0) {
+                        this.logger.error(new Error(`User errors when creating fulfillment: ${JSON.stringify(userErrors)}`));
+                        results.push({ success: false, orderId: order.ecommerceId, error: userErrors[0]?.message || 'Unknown error' });
+                        continue;
+                    }
+
+                    results.push({ success: true, orderId: order.ecommerceId, fulfillment: mutationResp.data?.fulfillmentCreate?.fulfillment });
+                }
+            } catch (error) {
+                this.logger.error(new Error(`Error updating fulfillment for order: ${order.ecommerceId}`, error));
+                results.push({ success: false, orderId: order.ecommerceId, error: error.message });
+            }
+        }
+
+        return results;
+    }
 }
+
+//TODO: mark synced statuses
