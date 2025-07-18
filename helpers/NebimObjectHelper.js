@@ -1,4 +1,5 @@
 import CoreClass from "../core/CoreClass.js";
+import SystemCodes from "../enums/SystemCodes.js";
 import ProductDetail from "../models/ProductDetail.js";
 import ProductInventory from "../models/ProductInventory.js";
 
@@ -72,7 +73,7 @@ export default class NebimObjectHelper extends CoreClass {
         StoreWarehouseCode: tenant.nebim.order.warehouse,
         OrderDate: order.order_date,
         DocumentNumber: order.order_id,
-        Description: `shopifyId_${order.shopify_id}${order.tags ? '; tags: ' : ''}${order.tags.join(', ')}`,
+        Description: `shopify_info:${order.order_id}${order.tags ? '; tags: ' : ''}${order.tags.join(', ')}`,
         DeliveryCompanyCode: tenant.nebim.order.deliveryCompanyCode,
         ShipmentMethodCode: 2,
         IsCompleted: true,
@@ -89,6 +90,7 @@ export default class NebimObjectHelper extends CoreClass {
             UsedBarcode: x.barcode,
             PriceVI: x.price,
             Qty1: x.quantity,
+            LineDescription: x.line_id,
             LDiscount4: x.line_discount
         })),
         Payments: [{
@@ -116,4 +118,41 @@ export default class NebimObjectHelper extends CoreClass {
             Amount: createdOrder.lines.reduce((sum, line) => sum + (line.amount), 0) ?? 0
         }]
     })
+
+    static getOrderStatusList = nebimOrderStatusList => {
+        const orders = {};
+
+        for (const row of nebimOrderStatusList) {
+            if (!(row.Status.toUpperCase() === SystemCodes.NEBIM_ORDER_STATUS.INVOICED || row.Status.toUpperCase() === SystemCodes.NEBIM_ORDER_STATUS.ON_CARGO)) {
+                continue;
+            }
+
+            if (!orders[row.DocNumber]) {
+                orders[row.DocNumber] = {
+                    erpId: row.OrderRefNumber,
+                    ecommerceId: row.DocNumber,
+                    tracking: {},
+                    status: row.Status
+                }
+            }
+
+            if (!orders[row.DocNumber].tracking[row.TrackingNumber ?? SystemCodes.DEFINITIONS.NO_TRACKING_NUMBER]) {
+                orders[row.DocNumber].tracking[row.TrackingNumber ?? SystemCodes.DEFINITIONS.NO_TRACKING_NUMBER] = {
+                    number: row.TrackingNumber ?? SystemCodes.DEFINITIONS.NO_TRACKING_NUMBER,
+                    url: row.TrackingUrl,
+                    fullFillmentIds: row.LineDescription,
+                    lines: []
+                }
+            } 
+            
+            orders[row.DocNumber].tracking[row.TrackingNumber ?? SystemCodes.DEFINITIONS.NO_TRACKING_NUMBER]?.lines.push({
+                erpLineId: row.OrderLineID,
+                orderQuantity: row.OrderQty,
+                shippedQuantity: row.InvoiceQty ?? row.ShipmentQty ?? 0
+            })
+
+        }
+
+        return orders
+    }
 }

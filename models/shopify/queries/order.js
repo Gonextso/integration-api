@@ -1,5 +1,5 @@
 export default {
-    openOrders: `
+  openOrders: `
 query Orders($cursor: String) {
     orders(first: 250, after: $cursor, query: "(status:open OR status:cancelled) AND created_at:>='@start_date' AND created_at:<='@end_date'") {
         pageInfo {
@@ -64,11 +64,30 @@ query Orders($cursor: String) {
                     zip
                 }
                 tags
+                fulfillmentOrders(first: 1) {
+                  nodes {
+                    id
+                    status
+                    requestStatus
+                    lineItems(first: 20) {
+                      nodes {
+                        id
+                        remainingQuantity
+                        totalQuantity
+                        lineItem {
+                          id
+                          sku
+                          variant { barcode }
+                        }
+                      }
+                    }
+                  }
+                }
             }
         }
     }
 }`,
-    orderByIds: `
+  orderByIds: `
 query GetOrdersById($ids: [ID!]!) {
   nodes(ids: $ids) {
     ... on Order {
@@ -127,6 +146,41 @@ query GetOrdersById($ids: [ID!]!) {
         zip
       }
       tags
+      fulfillmentOrders(first: 1) {
+          nodes {
+            id
+            status
+            requestStatus
+            lineItems(first: 20) {
+              nodes {
+                id
+                remainingQuantity
+                totalQuantity
+                lineItem {
+                  id
+                  sku
+                  variant { barcode }
+                }
+              }
+            }
+          }
+        }
+    }
+  }
+}`,
+  fulfillmentOrdersByOrderId: `
+query FulfillmentOrders($orderId: ID!) {
+  order(id: $orderId) {
+    fulfillmentOrders(first: 10) {
+      nodes {
+        id
+        lineItems(first: 100) {
+          nodes {
+            id
+            quantity: totalQuantity
+          }
+        }
+      }
     }
   }
 }`

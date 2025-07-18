@@ -44,4 +44,12 @@ export default new class ShopifyNebimOrderController extends CoreController {
 
         return this.response(res, { status: HttpStatusCodes.ACCEPTED });
     }
+
+    syncOrderStatus = async (req, res) => {
+        const orderBusiness = new OrderBusiness(req.tenant);
+
+        orderBusiness.syncOrderStatus(req.startDate, req.endDate);
+
+        return this.response(res, { status: HttpStatusCodes.ACCEPTED });
+    }
 }

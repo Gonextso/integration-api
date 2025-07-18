@@ -70,10 +70,7 @@ export default class NebimOrderBusiness extends CoreClass {
                             ok: false,
                             reason: error.message,
                             ecommerceId: order.order_id,
-                            process: SystemCodes.PROCESS.SYNC_CUSTOMER,
-                            orderData: {
-                                shopifyId: order.shopify_id
-                            }
+                            process: SystemCodes.PROCESS.SYNC_CUSTOMER
                         }
                     }
 
@@ -88,7 +85,6 @@ export default class NebimOrderBusiness extends CoreClass {
                             ok: true,
                             erpId: orderNumber,
                             ecommerceId: order.order_id,
-                            shopifyId: order.shopify_id,
                             lines: orderResponse.Lines.map(x => ({ erpLineId: x.LineID, quantity: x.Qty1, barcode: x.UsedBarcode, amount: x.LineAmount })),
                             partiallyCancelledLines: order.lines.filter(x => x.remaining_quantity).map(x => ({ barcode: x.barcode, quantity: x.remaining_quantity })),
                             isCancelled: false,
@@ -100,9 +96,6 @@ export default class NebimOrderBusiness extends CoreClass {
 
                         return {
                             ok: false,
-                            orderData: {
-                                shopifyId: order.shopify_id
-                            },
                             reason: error.message,
                             ecommerceId: order.order_id,
                             process: SystemCodes.PROCESS.SYNC_ORDERS
@@ -164,9 +157,6 @@ export default class NebimOrderBusiness extends CoreClass {
                             reason: error.message,
                             ecommerceId: order.order_id,
                             process: SystemCodes.PROCESS.TOKEN_CHECK,
-                            orderData: {
-                                shopifyId: order.shopify_id
-                            }
                         }
                     }
 
@@ -179,10 +169,7 @@ export default class NebimOrderBusiness extends CoreClass {
                             ok: false,
                             reason: error.message,
                             ecommerceId: order.order_id,
-                            process: SystemCodes.PROCESS.SYNC_CUSTOMER,
-                            orderData: {
-                                shopifyId: order.shopify_id
-                            }
+                            process: SystemCodes.PROCESS.SYNC_CUSTOMER
                         }
                     }
 
@@ -197,7 +184,6 @@ export default class NebimOrderBusiness extends CoreClass {
                             ok: true,
                             erpId: orderNumber,
                             ecommerceId: order.order_id,
-                            shopifyId: order.shopify_id,
                             lines: orderResponse.Lines.map(x => ({ erpLineId: x.LineID, quantity: x.Qty1, barcode: x.UsedBarcode, amount: x.LineAmount })),
                             partiallyCancelledLines: order.lines.filter(x => x.remaining_quantity).map(x => ({ barcode: x.barcode, quantity: x.remaining_quantity })),
                             isCancelled: false,
@@ -209,9 +195,6 @@ export default class NebimOrderBusiness extends CoreClass {
 
                         return {
                             ok: false,
-                            orderData: {
-                                shopifyId: order.shopify_id
-                            },
                             reason: error.message,
                             ecommerceId: order.order_id,
                             process: SystemCodes.PROCESS.SYNC_ORDERS
@@ -283,7 +266,6 @@ export default class NebimOrderBusiness extends CoreClass {
                         ok: true,
                         erpId: orderNumber,
                         ecommerceId: order.order_id,
-                        shopifyId: order.shopify_id,
                         isCancelled: true
                     };
 
@@ -292,9 +274,6 @@ export default class NebimOrderBusiness extends CoreClass {
 
                     return {
                         ok: false,
-                        orderData: {
-                            shopifyId: order.shopify_id
-                        },
                         reason: error.message,
                         ecommerceId: order.order_id,
                         process: SystemCodes.PROCESS.SYNC_CANCEL_ORDERS
@@ -340,5 +319,9 @@ export default class NebimOrderBusiness extends CoreClass {
 
     #cancelOrder = async (order, createdOrder) => {
         return this.api.post(NebimObjectHelper.toNebimCancelOrder(this.tenant, order, createdOrder), { "IdemPotent-Key": `cancel-${order.order_id}` });
+    }
+
+    getOrderStatus = async (startDate) => {
+        return NebimObjectHelper.getOrderStatusList(await this.api.runProc(this.tenant.nebim.procNames.order.status, { "Date": startDate }));
     }
 }

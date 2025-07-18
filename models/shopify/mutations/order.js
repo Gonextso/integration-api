@@ -21,4 +21,22 @@ mutation orderUpdate($input: OrderInput!) {
     }
   }
 }`
+  ,
+  fulfillmentCreate: `
+mutation fulfillmentCreate($fulfillment: FulfillmentInput!) {
+  fulfillmentCreate(fulfillment: $fulfillment) {
+    fulfillment {
+      id
+      status
+      trackingInfo {
+        number
+        url
+      }
+    }
+    userErrors {
+      field
+      message
+    }
+  }
+}`,
 } 
