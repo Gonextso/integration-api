@@ -4,7 +4,7 @@ import ProductDetail from "../models/ProductDetail.js";
 import ProductInventory from "../models/ProductInventory.js";
 
 export default class NebimObjectHelper extends CoreClass {
-    static getDetailList = (detailList, priceList, categoryKeysFrom) => {
+    static getDetailList = (detailList, priceList, tenant) => {
         const products = new Map();
         const prices = {};
 
@@ -27,7 +27,7 @@ export default class NebimObjectHelper extends CoreClass {
             let categoryName = ''
 
             for (const key in row) {
-                if (categoryKeysFrom.includes(key)) {
+                if (tenant.nebim.product.categoryKeysFrom.includes(key)) {
                     categoryName += row[key] + " "
                 }
             }
@@ -44,10 +44,13 @@ export default class NebimObjectHelper extends CoreClass {
                 });
             }
 
+            const sku = tenant.shopify.skuFields.nebim.fields.map(x => row[x]).join(tenant.shopify.skuFields.nebim.separator);
+
             product.addVariants({
                 barcode: row.Barcode,
                 color: row.ColorDescription,
                 dimention: row.ItemDim1Code,
+                sku: sku,
                 ...prices[row.Barcode]
             });
 

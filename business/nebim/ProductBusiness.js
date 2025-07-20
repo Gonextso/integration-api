@@ -14,7 +14,7 @@ export default class NebimProductBusiness extends CoreClass {
         const details = await this.api.runProc(this.tenant.nebim.procNames.product.details, query);
         const prices = await this.api.runProc(this.tenant.nebim.procNames.product.price, query); 
  
-        return NebimObjectHelper.getDetailList(details, prices, this.tenant.nebim.product.categoryKeysFrom);
+        return NebimObjectHelper.getDetailList(details, prices, this.tenant);
     }
 
     fetchInventories = async startDate => {
