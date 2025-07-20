@@ -73,12 +73,12 @@ export default class ShopifyProductBusiness extends CoreClass {
                         productOptions: [
                             productColorOp.size ? {
                                 name: "Color",
-                                position: 1, //TODO: can be ordered via user interaction
+                                position: this.tenant.shopify.isColorOptionFirst ? 1 : 2,
                                 values: [...productColorOp].map(x => ({ name: x }))
                             } : null,
                             productSizeOp.size ? {
                                 name: "Size",
-                                position: 2, //TODO: can be ordered via user interaction
+                                position: this.tenant.shopify.isColorOptionFirst ? 2 : 1,
                                 values: [...productSizeOp].map(x => ({ name: x }))
                             } : null
                         ].filter(x => x),
@@ -96,7 +96,7 @@ export default class ShopifyProductBusiness extends CoreClass {
                                 ].filter(y => y),
                                 price: x.sale_price,
                                 barcode: x.barcode,
-                                sku: product.erp_id.concat(x.color ? x.color.replace(/ /g, "-") : "NC-", x.dimention ? x.dimention.replace(/ /g, "-") : "ND") //TODO: facia bir sonuç ortaya çıkabiliyor
+                                sku: x.sku
                             }
                         }),
                         metafields: product.attributes.map(x => ({
@@ -162,12 +162,12 @@ export default class ShopifyProductBusiness extends CoreClass {
                             productOptions: [
                                 productColorOp.size ? {
                                     name: "Color",
-                                    position: 1, //TODO: can be ordered via user interaction
+                                    position: this.tenant.shopify.isColorOptionFirst ? 1 : 2,
                                     values: [...productColorOp].map(x => ({ name: x }))
                                 } : null,
                                 productSizeOp.size ? {
                                     name: "Size",
-                                    position: 2, //TODO: can be ordered via user interaction
+                                    position: this.tenant.shopify.isColorOptionFirst ? 2 : 1,
                                     values: [...productSizeOp].map(x => ({ name: x }))
                                 } : null
                             ].filter(x => x),
@@ -185,7 +185,7 @@ export default class ShopifyProductBusiness extends CoreClass {
                                     ].filter(y => y),
                                     price: x.sale_price,
                                     barcode: x.barcode,
-                                    sku: product.erp_id.concat(x.color ? x.color.replace(/ /g, "-") : "NC-", x.dimention ? x.dimention.replace(/ /g, "-") : "ND") //TODO: facia bir sonuç ortaya çıkabiliyor
+                                    sku: x.sku
                                 }
                             }),
                             metafields: product.attributes.map(x => ({
