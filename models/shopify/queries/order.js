@@ -35,6 +35,14 @@ query Orders($cursor: String) {
                     lastName
                     phone
                     note
+                    emailMarketingConsent {
+                      marketingState
+                      consentUpdatedAt
+                    }
+                    smsMarketingConsent {
+                      marketingState
+                      consentUpdatedAt
+                    }
                 }
                 lineItems(first: 250) {
                     nodes {
@@ -118,6 +126,14 @@ query GetOrdersById($ids: [ID!]!) {
         lastName
         phone
         note
+        emailMarketingConsent {
+          marketingState
+          consentUpdatedAt
+        }
+        smsMarketingConsent {
+          marketingState
+          consentUpdatedAt
+        }
       }
       lineItems(first: 250) {
         nodes {

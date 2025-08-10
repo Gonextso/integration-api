@@ -7,6 +7,7 @@ import ErrorController from '../controllers/ErrorController.js';
 import healthRouter  from '../routes/health.js' ;
 import shopifyNebimOrderRouter from '../routes/shopifyNebimOrder.js';
 import shopifyNebimProductRouter from '../routes/shopifyNebimProduct.js';
+import shopifyNebimCustomerRouter from '../routes/shopifyNebimCustomer.js';
 import nebimRouter from '../routes/nebim.js';
 import RequestMiddleware from '../middlewares/RequestMiddleware.js';
 import LogHelper from '../helpers/LogHelper.js';
@@ -53,6 +54,7 @@ app.use(`${routePrefix}/health`, healthRouter);
 app.use(`${routePrefix}/nebim`,  ConfigMiddleware.setConfigViaTenantId, nebimRouter);
 app.use(`${routePrefix}/shopify/nebim/order`,  ConfigMiddleware.setConfigViaTenantId, shopifyNebimOrderRouter);
 app.use(`${routePrefix}/shopify/nebim/product`,  ConfigMiddleware.setConfigViaTenantId, shopifyNebimProductRouter);
+app.use(`${routePrefix}/shopify/nebim/customer`,  ConfigMiddleware.setConfigViaTenantId, shopifyNebimCustomerRouter);
 
 app.use('/', ErrorController.notFound);
 app.use(ErrorController.clientErrorHandler, ErrorController.internalServerError);
