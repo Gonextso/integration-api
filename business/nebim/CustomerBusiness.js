@@ -43,13 +43,15 @@ export default class NebimCustomerClass extends CoreClass {
     #createCustomer = async ({ customer, address, is_receiver_not_customer }) => {
         const addressCodes = await this.#getAddressCodes(address);
         const customerNebimAddress = {
-            AddressTypeCode: this.tenant.nebim.customer.addressType, //TODO: must get from configuration
+            AddressTypeCode: this.tenant.nebim.customer.addressType,
             CountryCode: addressCodes.CountryCode,
             StateCode: addressCodes.StateCode,
             CityCode: addressCodes.CityCode,
             DistrictCode: addressCodes.DistrictCode,
             Address: address.address_text
         };
+        const [ emailConsentDate, emailConsentTimeZ ] = customer.consents.email.date ? customer.consents.email.date.split("T") : new Date().toISOString().split("T")
+        const [ gsmConsentDate, gsmConsentTimeZ ] = customer.consents.gsm.date ? customer.consents.gsm.date.split("T") : new Date().toISOString().split("T")
 
         const base = {
             ModelType: 3,
@@ -63,13 +65,41 @@ export default class NebimCustomerClass extends CoreClass {
             Communications: [
                 {
                     CommunicationTypeCode: "3",
-                    CommAddress: customer.email
+                    CommAddress: customer.email,
+                    OptInOptOutStatusIntegrator: {
+                        Call: false,
+                        CompanyBrandCode: "",
+                        ConfirmationFormStatusCode: this.tenant.nebim.customer.confirmationFormStatusCode, 
+                        ConfirmationFormTypeCode: this.tenant.nebim.customer.confirmationFormTypeCode, 
+                        ConsentDate: emailConsentDate,
+                        ConsentTime: emailConsentTimeZ.replace("Z", "").split(".")[0],
+                        ConsentSource: this.tenant.nebim.customer.consentSource,
+                        Email: true,
+                        FormNumber: "digital",
+                        OptIn: customer.consents.email.is_opt_in,
+                        RecipientType: 1,
+                        SMS: false
+                    }
                 },
                 {
                     CommunicationTypeCode: this.tenant.nebim.customer.phoneType,
-                    CommAddress: customer.phone
+                    CommAddress: customer.phone,
+                    OptInOptOutStatusIntegrator: {
+                        Call: true,
+                        CompanyBrandCode: "",
+                        ConfirmationFormStatusCode: this.tenant.nebim.customer.confirmationFormStatusCode, 
+                        ConfirmationFormTypeCode: this.tenant.nebim.customer.confirmationFormTypeCode, 
+                        ConsentDate: gsmConsentDate,
+                        ConsentTime: gsmConsentTimeZ.replace("Z", "").split(".")[0],
+                        ConsentSource: this.tenant.nebim.customer.consentSource,
+                        Email: false,
+                        FormNumber: "digital",
+                        OptIn: customer.consents.gsm.is_opt_in,
+                        RecipientType: 1,
+                        SMS: true
+                    }
                 }
-            ], //TODO: etk yönetimi
+            ],
             Contacts: [is_receiver_not_customer ? {
                 ContactTypeCode: "C",
                 FirstName: address.first_name,

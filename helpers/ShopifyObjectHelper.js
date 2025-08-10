@@ -43,7 +43,17 @@ export default class ShopifyObjectHelper extends CoreClass {
                     last_name: x.customer.lastName,
                     email: x.customer.email,
                     phone: x.customer.phone,
-                    shopify_id: x.customer.id
+                    shopify_id: x.customer.id,
+                    consents: {
+                        email: {
+                            date: x.customer.emailMarketingConsent.consentUpdatedAt,
+                            is_opt_in: x.customer.emailMarketingConsent.marketingState === "SUBSCRIBED"
+                        },
+                        gsm: {
+                            date: x.customer.smsMarketingConsent.consentUpdatedAt,
+                            is_opt_in: x.customer.smsMarketingConsent.marketingState === "SUBSCRIBED"
+                        }
+                    }
                 },
                 address: {
                     first_name: x.shippingAddress.firstName,
