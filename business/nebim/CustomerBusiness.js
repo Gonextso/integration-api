@@ -62,11 +62,24 @@ export default class NebimCustomerClass extends CoreClass {
             IdentityNum: "11111111111",
             AccountOpeningDate: new Date().toISOString(),
             PostalAddresses: [!is_receiver_not_customer ? customerNebimAddress : { AddressTypeCode: this.tenant.nebim.customer.addressType }],
+            CurrAccPersonalDataConfirmations: (this.tenant.nebim.customer.confirmationFormTypeCode && this.tenant.nebim.customer.confirmationFormStatusCode && this.tenant.nebim.customer.inactivationReasonCode) ? [{
+                ConfirmationDate: new Date().toISOString(),
+                ConfirmationFormTypeCode: this.tenant.nebim.customer.confirmationFormTypeCode,
+                FormNumber: "digital",
+                InActivationReasonCode: this.tenant.nebim.customer.inactivationReasonCode,
+                ConfirmationFormStatusCode: this.tenant.nebim.customer.confirmationFormStatusCode,
+                CanShareWithThirdParty: true,
+                CanShareWithForeignCountries: true,
+                CallPermission: true,
+                SmsPermission: true,
+                EmailPermission: true,
+                AddressPermission: true
+            }] : [],
             Communications: [
                 {
                     CommunicationTypeCode: "3",
                     CommAddress: customer.email,
-                    OptInOptOutStatusIntegrator: {
+                    OptInOptOutStatusIntegrator: (this.tenant.nebim.customer.confirmationFormTypeCode && this.tenant.nebim.customer.confirmationFormStatusCode) ? {
                         Call: false,
                         CompanyBrandCode: "",
                         ConfirmationFormStatusCode: this.tenant.nebim.customer.confirmationFormStatusCode, 
@@ -79,12 +92,12 @@ export default class NebimCustomerClass extends CoreClass {
                         OptIn: customer.consents.email.is_opt_in,
                         RecipientType: 1,
                         SMS: false
-                    }
+                    } : {}
                 },
                 {
                     CommunicationTypeCode: this.tenant.nebim.customer.phoneType,
                     CommAddress: customer.phone,
-                    OptInOptOutStatusIntegrator: {
+                    OptInOptOutStatusIntegrator: (this.tenant.nebim.customer.confirmationFormTypeCode && this.tenant.nebim.customer.confirmationFormStatusCode) ? {
                         Call: true,
                         CompanyBrandCode: "",
                         ConfirmationFormStatusCode: this.tenant.nebim.customer.confirmationFormStatusCode, 
@@ -97,7 +110,7 @@ export default class NebimCustomerClass extends CoreClass {
                         OptIn: customer.consents.gsm.is_opt_in,
                         RecipientType: 1,
                         SMS: true
-                    }
+                    } : {}
                 }
             ],
             Contacts: [is_receiver_not_customer ? {
