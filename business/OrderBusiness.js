@@ -178,37 +178,50 @@ export default class OrderBusiness extends CoreClass {
                 const { ecommerceId, traceId } = log;
                 if (ecommerceId && !latestErrorsByEcomId.has(ecommerceId)) {
                     const requestLogBody = await RequestLog
-                        .findOne({ tenant: this.tenant._id, traceId })
+                        .findOne({ 
+                            tenant: this.tenant._id, 
+                            traceId,
+                            transactionId: { $regex: ecommerceId, $options: 'i' }
+                        })
                         .sort({ createdAt: -1 })
-                        .select({ body: 1, _id: 0 })
+                        .select({ body: 1, _id: 0, isError: 1, response: 1 })
                         .lean();
 
-                    let bodyBeautified = "";
-                    if (requestLogBody?.body) {
-                        if (typeof requestLogBody.body === "string") {
-                            try {
-                                bodyBeautified = JSON.stringify(JSON.parse(requestLogBody.body), null, 2);
-                            } catch (err) {
-                                bodyBeautified = requestLogBody.body;
+                    let requestBodyBeautified = "", responseBodyBeautified = "";
+                    if (requestLogBody?.isError) {
+                        if (requestLogBody?.body) {
+                            if (typeof requestLogBody.body === "string") {
+                                try {
+                                    requestBodyBeautified = JSON.stringify(JSON.parse(requestLogBody.body), null, 2);
+                                } catch (err) {
+                                    requestBodyBeautified = requestLogBody.body;
+                                }
+                            } else {
+                                requestBodyBeautified = JSON.stringify(requestLogBody.body, null, 2);
                             }
-                        } else {
-                            bodyBeautified = JSON.stringify(requestLogBody.body, null, 2);
+                        }
+
+                        if (requestLogBody?.response) {
+                            try {
+                                responseBodyBeautified = JSON.stringify(JSON.parse(requestLogBody.response), null, 2);
+                            } catch (err) {
+                                responseBodyBeautified = requestLogBody.response;
+                            }
                         }
                     }
 
-                    log.reason =
-                        `
--------------------------------------
-Reason: 
--------------------------------------
-${log.reason}
--------------------------------------
-Last Request Log Body For This Trace: 
--------------------------------------
-${bodyBeautified}
--------------------------------------`;
+                    const reasonDetail = requestLogBody?.isError ? {
+                        request: requestBodyBeautified,
+                        response: responseBodyBeautified
+                    } : null;
 
-                    latestErrorsByEcomId.set(ecommerceId, log);
+                    const returnResult = {
+                        ...log._doc,
+                        reasonDetail
+                    } 
+
+
+                    latestErrorsByEcomId.set(ecommerceId, returnResult);
                 }
             }
 

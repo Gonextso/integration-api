@@ -1,5 +1,6 @@
 import SystemCache from "../cache/SystemCache.js"
 import CoreClass from "../core/CoreClass.js";
+import namespace from "../helpers/CLSHelper.js";
 
 export default new class SystemHelper extends CoreClass {
     constructor() {
@@ -9,6 +10,7 @@ export default new class SystemHelper extends CoreClass {
     createTransaction = async (tenant, id, work) => {
         const systemCache = new SystemCache(tenant);
         let result = undefined;
+        namespace.set('trancationId', id);
 
         const lockAcquired = await systemCache.lock(id);
 

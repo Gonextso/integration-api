@@ -11,5 +11,7 @@ export default mongoose.model('RequestLog', new mongoose.Schema({
     responseTime: String,
     response: String,
     traceId: { type: String, required: true },
+    transactionId: String,
+    isError: Boolean,
     createdAt: { type: Date, default: Date.now },
 }));
