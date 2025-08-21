@@ -9,6 +9,7 @@ import shopifyNebimOrderRouter from '../routes/shopifyNebimOrder.js';
 import shopifyNebimProductRouter from '../routes/shopifyNebimProduct.js';
 import shopifyNebimCustomerRouter from '../routes/shopifyNebimCustomer.js';
 import nebimRouter from '../routes/nebim.js';
+import cacheRouter from '../routes/cache.js';
 import RequestMiddleware from '../middlewares/RequestMiddleware.js';
 import LogHelper from '../helpers/LogHelper.js';
 import ConfigMiddleware from '../middlewares/ConfigMiddleware.js';
@@ -55,6 +56,7 @@ app.use(`${routePrefix}/nebim`,  ConfigMiddleware.setConfigViaTenantId, nebimRou
 app.use(`${routePrefix}/shopify/nebim/order`,  ConfigMiddleware.setConfigViaTenantId, shopifyNebimOrderRouter);
 app.use(`${routePrefix}/shopify/nebim/product`,  ConfigMiddleware.setConfigViaTenantId, shopifyNebimProductRouter);
 app.use(`${routePrefix}/shopify/nebim/customer`,  ConfigMiddleware.setConfigViaTenantId, shopifyNebimCustomerRouter);
+app.use(`${routePrefix}/cache`,  ConfigMiddleware.setConfigViaTenantId, cacheRouter);
 
 app.use('/', ErrorController.notFound);
 app.use(ErrorController.clientErrorHandler, ErrorController.internalServerError);
