@@ -154,7 +154,7 @@ export default class NebimCustomerClass extends CoreClass {
         }
 
         if (is_receiver_not_customer) {
-            const isContactExists = nebimCustomer.Contacts.some(x => x.FirstName === address.FirstName && x.LastName === address.LastName);
+            const isContactExists = nebimCustomer.Contacts?.some(x => x.FirstName === address.FirstName && x.LastName === address.LastName);
 
             if (isContactExists) {
                 nebimCustomer = await this.#addContactAddress(nebimCustomer, nebimCustomer.Contacts.filter(x => x.FirstName === address.FirstName && x.LastName === address.LastName)[0].ContactID, customerNebimAddress, address.phone);
