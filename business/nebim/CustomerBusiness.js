@@ -165,6 +165,8 @@ export default class NebimCustomerClass extends CoreClass {
             nebimCustomer = await this.#addCustomerAddress(nebimCustomer, customerNebimAddress)
         }
 
+        console.log(nebimCustomer.PostalAddressesWithContacts.filter(x => x.Address === address.address_text)[0]);
+
         return {
             CustomerCode: nebimCustomer.CurrAccCode,
             ShippingPostalAddressID: is_receiver_not_customer ? nebimCustomer.PostalAddressesWithContacts.filter(x => x.Address === address.address_text)[0].PostalAddressID : nebimCustomer.PostalAddresses.filter(x => x.Address === address.address_text)[0].PostalAddressID
