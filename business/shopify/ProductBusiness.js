@@ -68,6 +68,7 @@ export default class ShopifyProductBusiness extends CoreClass {
                 const variables = {
                     synchronous: true,
                     productSet: {
+                        status: "DRAFT",
                         title: product.title,
                         category: category.ecommerceKey ? category.ecommerceKey : null,
                         productOptions: [
@@ -157,6 +158,7 @@ export default class ShopifyProductBusiness extends CoreClass {
                     const variables = {
                         synchronous: true,
                         productSet: {
+                            status: "DRAFT",
                             title: product.title,
                             category: category.ecommerceKey ? category.ecommerceKey : null,
                             productOptions: [
