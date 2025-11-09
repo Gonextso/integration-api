@@ -39,7 +39,7 @@ export default class NebimObjectHelper extends CoreClass {
                     category: categoryName.trim(),
                     tax_rate: row.VatRate,
                     is_blocked_by_erp: !row.UseInternet || row.IsBlocked,
-                    attributes: [...Object.keys(row).map(x => (x.includes('Att') && !x.includes('Desc') && row[x]) ? { id: x, code: row[x], title: row[`${x}Desc`] } : null)].filter(x => x),
+                    attributes: Object.keys(row).map(x => (x.includes('Att') && !x.includes('Color') && !x.includes('Desc') && row[x]) ? { id: x, code: row[x], title: row[`${x}Desc`] } : null).filter(Boolean),
                     variants: []
                 });
             }
