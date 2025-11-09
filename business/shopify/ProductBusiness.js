@@ -26,10 +26,26 @@ export default class ShopifyProductBusiness extends CoreClass {
         for (const product of detailList) {
             const productSizeOp = new Set();
             const productColorOp = new Set();
+            const barcodes = product.variants.map(x => x.barcode).filter(Boolean);
+            const syncedBarcodeDocs = barcodes.length ? await SyncedBarcode.find({
+                barcode: { $in: barcodes },
+                erp: SystemCodes.ERP.V3_INTEGRATOR,
+                ecommerce: SystemCodes.ECOMMERCE.SHOPIFY,
+                tenant: this.tenant._id
+            }) : [];
+            const syncedBarcodeMap = new Map();
+            let existingProductId = null;
+
+            for (const doc of syncedBarcodeDocs) {
+                syncedBarcodeMap.set(doc.barcode, doc);
+                if (!existingProductId && doc.productId) {
+                    existingProductId = doc.productId;
+                }
+            }
 
             if (this.tenant.shopify.billing.planKey !== SystemCodes.BILLING_PLANS.ENTERPRISE.KEY) {
                 const limitBusiness = new LimitBusiness(await Tenant.findById(this.tenant._id));
-                let isProductAlreadySynced = false;
+                let isProductAlreadySynced = syncedBarcodeDocs.length > 0;
                 let isLimitAvailable = true;
 
                 for (const variant of product.variants) {
@@ -39,15 +55,12 @@ export default class ShopifyProductBusiness extends CoreClass {
                         isLimitAvailable = false;
                     }
 
-                    if (!isLimitAvailable && await SyncedBarcode.findOne({
-                        barcode: variant.barcode,
-                        erp: SystemCodes.ERP.V3_INTEGRATOR,
-                        ecommerce: SystemCodes.ECOMMERCE.SHOPIFY,
-                        tenant: this.tenant._id
-                    })) {
-                            isLimitAvailable = true;
-                            isProductAlreadySynced = true;
-                            this.logger.info4(`Barcode ${variant.barcode} already synced, skipping limit check`);
+                    const existingSync = syncedBarcodeMap.get(variant.barcode);
+
+                    if (!isLimitAvailable && existingSync) {
+                        isLimitAvailable = true;
+                        isProductAlreadySynced = true;
+                        this.logger.info4(`Barcode ${variant.barcode} already synced, skipping limit check`);
                     }
 
                     if (!isLimitAvailable) {
@@ -68,6 +81,7 @@ export default class ShopifyProductBusiness extends CoreClass {
                 const variables = {
                     synchronous: true,
                     productSet: {
+                        ...(existingProductId ? { id: existingProductId } : {}),
                         status: "DRAFT",
                         title: product.title,
                         category: category.ecommerceKey ? category.ecommerceKey : null,
@@ -84,7 +98,8 @@ export default class ShopifyProductBusiness extends CoreClass {
                             } : null
                         ].filter(x => x),
                         variants: product.variants.map(x => {
-                            return {
+                            const existingSync = syncedBarcodeMap.get(x.barcode);
+                            const variantInput = {
                                 optionValues: [
                                     x.color ? {
                                         optionName: "Color",
@@ -94,35 +109,56 @@ export default class ShopifyProductBusiness extends CoreClass {
                                         optionName: "Size",
                                         name: x.dimention
                                     } : null
-                                ].filter(y => y),
+                                ].filter(Boolean),
                                 price: x.sale_price,
                                 barcode: x.barcode,
                                 sku: x.sku
+                            };
+
+                            if (existingSync?.variantId) {
+                                variantInput.id = existingSync.variantId;
                             }
+
+                            return variantInput;
                         }),
                         metafields: product.attributes.map(x => ({
                             namespace: "gonextso_nebim_app",
                             key: slug(x.id),
                             value: x.code,
                             type: 'single_line_text_field'
-                        }))
+                        })).concat({
+                            namespace: "gonextso_nebim_app",
+                            key: "ItemCode",
+                            value: product.erp_id,
+                            type: 'single_line_text_field'
+                        }),
                     }
                 };
 
                 const data = await this.api.query(mutation, variables);
 
-                if (data.errors) {
-                    this.logger.error('GraphQL Errors:', JSON.stringify(data.errors));
+                if (data.errors || data.userErrors || (data.data.productSet.userErrors && data.data.productSet.userErrors.length > 0)) {
+                    this.logger.error('GraphQL Errors:', JSON.stringify(data.errors || data.data.productSet.userErrors));
                     continue;
                 }
 
-                for (const attr of product.attributes) {
+                const shopifyProduct = data.data.productSet?.product ?? {};
+                const variantNodes = shopifyProduct.variants?.nodes ?? [];
+                if (!existingProductId && shopifyProduct.id) {
+                    existingProductId = shopifyProduct.id;
+                }
+
+                for (const attr of product.attributes
+                    .concat({ id: "ItemCode" })) {
                     metafields.add(`gonextso_nebim_app.${slug(attr.id)}`);
                 }
 
                 if (this.tenant.shopify.isInventoryTracking) this.#setProductVariantsToTracked(data.data.productSet.product);
 
-                for (const variant of product.variants) {
+                for (let index = 0; index < product.variants.length; index++) {
+                    const variant = product.variants[index];
+                    const existingSync = syncedBarcodeMap.get(variant.barcode);
+                    const variantNode = variantNodes[index] ?? {};
                     await SyncedBarcode.updateOne(
                         {
                             barcode: variant.barcode,
@@ -135,7 +171,9 @@ export default class ShopifyProductBusiness extends CoreClass {
                                 barcode: variant.barcode,
                                 erp: SystemCodes.ERP.V3_INTEGRATOR,
                                 ecommerce: SystemCodes.ECOMMERCE.SHOPIFY,
-                                tenant: this.tenant._id
+                                tenant: this.tenant._id,
+                                productId: shopifyProduct.id ?? existingSync?.productId ?? null,
+                                variantId: variantNode.id ?? existingSync?.variantId ?? null
                             }
                         },
                         { upsert: true }
@@ -147,6 +185,7 @@ export default class ShopifyProductBusiness extends CoreClass {
             } else {
                 promises.push(async () => {
                     this.logger.info4(`Syncing product ${product.erp_id} in parallel`);
+                    let localExistingProductId = existingProductId;
 
                     for (const variant of product.variants) {
                         productColorOp.add(variant.color);
@@ -158,6 +197,7 @@ export default class ShopifyProductBusiness extends CoreClass {
                     const variables = {
                         synchronous: true,
                         productSet: {
+                            ...(localExistingProductId ? { id: localExistingProductId } : {}),
                             status: "DRAFT",
                             title: product.title,
                             category: category.ecommerceKey ? category.ecommerceKey : null,
@@ -172,9 +212,10 @@ export default class ShopifyProductBusiness extends CoreClass {
                                     position: this.tenant.shopify.isColorOptionFirst ? 2 : 1,
                                     values: [...productSizeOp].map(x => ({ name: x }))
                                 } : null
-                            ].filter(x => x),
+                            ].filter(Boolean),
                             variants: product.variants.map(x => {
-                                return {
+                                const existingSync = syncedBarcodeMap.get(x.barcode);
+                                const variantInput = {
                                     optionValues: [
                                         x.color ? {
                                             optionName: "Color",
@@ -184,34 +225,53 @@ export default class ShopifyProductBusiness extends CoreClass {
                                             optionName: "Size",
                                             name: x.dimention
                                         } : null
-                                    ].filter(y => y),
+                                    ].filter(Boolean),
                                     price: x.sale_price,
                                     barcode: x.barcode,
                                     sku: x.sku
+                                };
+
+                                if (existingSync?.variantId) {
+                                    variantInput.id = existingSync.variantId;
                                 }
+
+                                return variantInput;
                             }),
                             metafields: product.attributes.map(x => ({
                                 namespace: "gonextso_nebim_app",
                                 key: slug(x.id),
                                 value: x.code,
                                 type: 'single_line_text_field'
-                            }))
+                            })).concat({
+                                namespace: "gonextso_nebim_app",
+                                key: "ItemCode",
+                                value: product.erp_id,
+                                type: 'single_line_text_field'
+                            })
                         }
                     };
 
                     const data = await this.api.query(mutation, variables);
 
-                    if (data.errors) {
-                        this.logger.error('GraphQL Errors:', JSON.stringify(data.errors));
+                    if (data.errors || data.userErrors || (data.data.productSet.userErrors && data.data.productSet.userErrors.length > 0)) {
+                        this.logger.error('GraphQL Errors:', JSON.stringify(data.errors || data.data.productSet.userErrors));
+                        return;
                     }
 
-                    for (const attr of product.attributes) {
+                    const shopifyProduct = data.data.productSet?.product ?? {};
+                    const variantNodes = shopifyProduct.variants?.nodes ?? [];
+
+                    for (const attr of product.attributes
+                        .concat({ id: "ItemCode" })) {
                         metafields.add(`gonextso_nebim_app.${slug(attr.id)}`);
                     }
 
                     if (this.tenant.shopify.isInventoryTracking) this.#setProductVariantsToTracked(data.data.productSet.product);
 
-                    for (const variant of product.variants) {
+                    for (let index = 0; index < product.variants.length; index++) {
+                        const variant = product.variants[index];
+                        const existingSync = syncedBarcodeMap.get(variant.barcode);
+                        const variantNode = variantNodes[index] ?? {};
                         const res = await SyncedBarcode.updateOne(
                             {
                                 barcode: variant.barcode,
@@ -224,7 +284,9 @@ export default class ShopifyProductBusiness extends CoreClass {
                                     barcode: variant.barcode,
                                     erp: SystemCodes.ERP.V3_INTEGRATOR,
                                     ecommerce: SystemCodes.ECOMMERCE.SHOPIFY,
-                                    tenant: this.tenant._id
+                                    tenant: this.tenant._id,
+                                    productId: shopifyProduct.id ?? existingSync?.productId ?? null,
+                                    variantId: variantNode.id ?? existingSync?.variantId ?? null
                                 }
                             },
                             { upsert: true }
@@ -330,8 +392,8 @@ export default class ShopifyProductBusiness extends CoreClass {
 
         const data = await this.api.query(mutation, variables);
 
-        if (data.errors) {
-            this.logger.error('GraphQL Errors:', JSON.stringify(data.errors));
+        if (!data || data.errors) {
+            this.logger.error('GraphQL Errors:', JSON.stringify(data?.errors || data));
         }
     }
 }
