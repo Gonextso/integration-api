@@ -159,7 +159,8 @@ export default class NebimCustomerClass extends CoreClass {
             if (isContactExists) {
                 nebimCustomer = await this.#addContactAddress(nebimCustomer, nebimCustomer.Contacts.filter(x => x.FirstName === address.FirstName && x.LastName === address.LastName)[0].ContactID, customerNebimAddress, address.phone);
             } else {
-                //TODO: Implement new incoming contact
+                nebimCustomer = await this.#addContact(nebimCustomer, address.FirstName, address.LastName);
+                nebimCustomer = await this.#addContactAddress(nebimCustomer, nebimCustomer.Contacts[0].ContactID, customerNebimAddress, address.phone);
             }
         } else {
             nebimCustomer = await this.#addCustomerAddress(nebimCustomer, customerNebimAddress)
@@ -193,6 +194,23 @@ export default class NebimCustomerClass extends CoreClass {
             PostalAddresses: [{
                 ...customerNebimAddress,
                 ContactID: contactId
+            }]
+        })
+    }
+
+    #addContact = async (nebimCustomer, firstName, lastName, identityNum = "11111111111", isBlocked = false) => {
+        return this.api.post({
+            ModelType: 3,
+            CurrAccCode: nebimCustomer.CurrAccCode,
+            Contacts: [        {
+                ContactTypeCode: "C",
+                FirstName: firstName,
+                IdentityNum: identityNum,
+                IsAuthorized: true,
+                IsBlocked: isBlocked,
+                JobTitleCode: "",
+                LastName: lastName,
+                TitleCode: ""
             }]
         })
     }
