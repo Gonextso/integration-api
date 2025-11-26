@@ -30,7 +30,18 @@ export default class ShopifyObjectHelper extends CoreClass {
             }));
         }
 
-        return orderList ? orderList.map(x => {
+        const filteredOrderList = orderList ? orderList.filter(x => {
+            const metafields = x.metafields?.edges ?? [];
+            const orderIdMetafield = metafields.find(
+                edge => edge.node?.namespace === 'gonextso_nebim_app' && 
+                        edge.node?.key === 'order_id' && 
+                        edge.node?.value
+            );
+
+            return !orderIdMetafield;
+        }) : [];
+
+        return filteredOrderList ? filteredOrderList.map(x => {
             return {
                 order_id: `${x.name}.${x.id}`,
                 order_date: new Date(x.createdAt).toISOString().split('T')[0],

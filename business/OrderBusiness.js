@@ -274,6 +274,12 @@ export default class OrderBusiness extends CoreClass {
                 this.logger.info(`${failedOrderList.length} failed orders found, sync started`);
 
                 const orderList = await shopifyOrderBusiness.getOrdersByIds(failedOrderList.map(x => x.ecommerceId.split('.')[1]))
+                
+                const filteredCount = failedOrderList.length - orderList.length;
+                if (filteredCount > 0) {
+                    this.logger.info(`${filteredCount} failed orders filtered out (already have gonextso_nebim_app.order_id metafield)`);
+                }
+                
                 const craeteOrderResults = await nebimOrderBusiness.createOrders(orderList, true);
 
                 for (const failedOrder of craeteOrderResults.failedOrders) {
@@ -344,6 +350,8 @@ export default class OrderBusiness extends CoreClass {
                 orderSyncBatch.skippedFailedOrderCount = craeteOrderResults.skippedFailedOrderCount;
                 orderSyncBatch.cancelledOrderCount = 0;
                 orderSyncBatch.skippedAlreadySyncedOrderCount = craeteOrderResults.skippedAlreadySyncedOrders;
+            } else {
+                this.logger.info(`No failed orders found`);
             }
 
             const cancelQuery = {
@@ -360,6 +368,13 @@ export default class OrderBusiness extends CoreClass {
                 this.logger.info(`${failedCancelOrderList.length} failed cancel orders found, sync started`);
 
                 const cancelOrderList = await shopifyOrderBusiness.getOrdersByIds(failedCancelOrderList.map(x => x.ecommerceId.split('.')[1]))
+                
+                // Filter out orders that already have gonextso_nebim_app.order_id metafield
+                const filteredCancelCount = failedCancelOrderList.length - cancelOrderList.length;
+                if (filteredCancelCount > 0) {
+                    this.logger.info(`${filteredCancelCount} failed cancel orders filtered out (already have gonextso_nebim_app.order_id metafield)`);
+                }
+                
                 const cancelOrderResults = await nebimOrderBusiness.cancelOrders(cancelOrderList, true);
 
                 for (const failedOrder of cancelOrderResults.failedOrders) {
@@ -418,6 +433,8 @@ export default class OrderBusiness extends CoreClass {
                 orderSyncBatch.skippedFailedOrderCount += cancelOrderResults.skippedFailedOrderCount;
                 orderSyncBatch.cancelledOrderCount = cancelOrderResults.successOrders.length;
                 orderSyncBatch.skippedAlreadySyncedOrderCount += cancelOrderResults.skippedAlreadySyncedOrders;
+            } else {
+                this.logger.info(`No failed cancel orders found`);
             }
 
             orderSyncBatch.save();
