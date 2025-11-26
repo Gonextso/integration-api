@@ -12,7 +12,6 @@ export default class ShopifyOrderBusiness extends CoreClass {
         this.api = new ShopifyGqlAPI(tenant);
     }
 
-    //TODO: 1002 siparişi neden geliyor incele iade edilmiş
     getOrders = async (startDate, endDate) => {
         const query = orderQueries.openOrders;
 
