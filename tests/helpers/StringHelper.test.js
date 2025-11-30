@@ -1,0 +1,151 @@
+import { jest, describe, it, expect, beforeEach, afterEach } from '@jest/globals';
+
+const { default: StringHelper } = await import('../../helpers/StringHelper.js');
+
+describe('StringHelper', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  afterEach(() => {
+    jest.clearAllMocks();
+  });
+
+  describe('truncateString', () => {
+    it('should return string as-is when length is less than maxLength', () => {
+      const str = 'Short string';
+      const result = StringHelper.truncateString(str, 100);
+
+      expect(result).toBe(str);
+    });
+
+    it('should truncate string when length exceeds maxLength', () => {
+      const str = 'a'.repeat(3000);
+      const result = StringHelper.truncateString(str, 2500);
+
+      // truncateString takes maxLength - 3 chars and adds "... [truncated by gonextso StringHelper]" (40 chars)
+      // So total length is (maxLength - 3) + 40 = maxLength + 37
+      expect(result.length).toBe(2500 + 37);
+      expect(result).toContain('... [truncated by gonextso StringHelper]');
+    });
+
+    it('should use default maxLength of 2500', () => {
+      const str = 'a'.repeat(3000);
+      const result = StringHelper.truncateString(str);
+
+      // truncateString takes maxLength - 3 chars and adds "... [truncated by gonextso StringHelper]" (40 chars)
+      // So total length is (maxLength - 3) + 40 = maxLength + 37
+      expect(result.length).toBe(2500 + 37);
+      expect(result).toContain('... [truncated by gonextso StringHelper]');
+    });
+
+    it('should return null when str is null', () => {
+      const result = StringHelper.truncateString(null);
+
+      expect(result).toBeNull();
+    });
+
+    it('should return undefined when str is undefined', () => {
+      const result = StringHelper.truncateString(undefined);
+
+      expect(result).toBeUndefined();
+    });
+
+    it('should return empty string when str is empty string', () => {
+      const result = StringHelper.truncateString('');
+
+      expect(result).toBe('');
+    });
+  });
+
+  describe('normalizeString', () => {
+    it('should normalize string by removing accents', () => {
+      const str = 'Café';
+      const result = StringHelper.normalizeString(str);
+
+      expect(result).toBe('cafe');
+    });
+
+    it('should convert to lowercase', () => {
+      const str = 'HELLO WORLD';
+      const result = StringHelper.normalizeString(str);
+
+      expect(result).toBe('hello world');
+    });
+
+    it('should handle null and undefined', () => {
+      expect(StringHelper.normalizeString(null)).toBe('');
+      expect(StringHelper.normalizeString(undefined)).toBe('');
+    });
+
+    it('should handle numbers', () => {
+      const result = StringHelper.normalizeString(123);
+
+      expect(result).toBe('123');
+    });
+
+    it('should remove Turkish characters accents', () => {
+      const str = 'İstanbul';
+      const result = StringHelper.normalizeString(str);
+
+      expect(result).toBe('istanbul');
+    });
+  });
+
+  describe('compareStrings', () => {
+    it('should return true for identical strings', () => {
+      expect(StringHelper.compareStrings('hello', 'hello')).toBe(true);
+    });
+
+    it('should return true for strings with different cases', () => {
+      expect(StringHelper.compareStrings('Hello', 'HELLO')).toBe(true);
+    });
+
+    it('should return true for strings with accents', () => {
+      expect(StringHelper.compareStrings('Café', 'Cafe')).toBe(true);
+    });
+
+    it('should return false for different strings', () => {
+      expect(StringHelper.compareStrings('hello', 'world')).toBe(false);
+    });
+
+    it('should handle null and undefined', () => {
+      expect(StringHelper.compareStrings(null, null)).toBe(true);
+      expect(StringHelper.compareStrings(undefined, undefined)).toBe(true);
+      expect(StringHelper.compareStrings(null, undefined)).toBe(true);
+    });
+  });
+
+  describe('generateUUID', () => {
+    it('should generate a UUID string', () => {
+      const uuid = StringHelper.generateUUID();
+
+      expect(typeof uuid).toBe('string');
+      expect(uuid.length).toBeGreaterThan(0);
+    });
+
+    it('should generate different UUIDs', () => {
+      const uuid1 = StringHelper.generateUUID();
+      const uuid2 = StringHelper.generateUUID();
+
+      expect(uuid1).not.toBe(uuid2);
+    });
+  });
+
+  describe('generateId', () => {
+    it('should generate an ID string', () => {
+      const id = StringHelper.generateId();
+
+      expect(typeof id).toBe('string');
+      expect(id.length).toBeGreaterThan(0);
+    });
+
+    it('should generate different IDs', () => {
+      const id1 = StringHelper.generateId();
+      const id2 = StringHelper.generateId();
+
+      expect(id1).not.toBe(id2);
+    });
+  });
+});
+
