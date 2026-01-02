@@ -4,7 +4,7 @@ import ShopifyObjectHelper from "../../helpers/ShopifyObjectHelper.js";
 import ShopifyGqlAPI from "../../apis/ShopifyGqlAPI.js";
 import CoreClass from "../../core/CoreClass.js";
 import SystemCodes from "../../enums/SystemCodes.js";
-import SuccessOrder from "../../models/db/SuccessOrder.js";
+import SuccessOrder from "../../models/db/postgres/SuccessOrder.js";
 
 export default class ShopifyOrderBusiness extends CoreClass {
     constructor(tenant) {
@@ -26,8 +26,14 @@ export default class ShopifyOrderBusiness extends CoreClass {
 
             const data = await this.api.query(query.replace('@start_date', startDate).replace('@end_date', endDate), variables);
 
-            if (data.errors) {
-                this.logger.error('GraphQL Errors:', data.errors);
+            if (!data) {
+                return;
+            }
+            
+            if (data.errors && Array.isArray(data.errors) && data.errors.length > 0) {
+                const error = new Error('GraphQL Errors');
+                error.graphqlErrors = data.errors;
+                this.logger.error(error);
                 return;
             }
 
@@ -70,8 +76,14 @@ export default class ShopifyOrderBusiness extends CoreClass {
 
             const data = await this.api.query(orderQueries.orderByIds, variables);
 
-            if (data.errors) {
-                this.logger.error("GraphQL Errors:", data.errors);
+            if (!data) {
+                continue;
+            }
+            
+            if (data.errors && Array.isArray(data.errors) && data.errors.length > 0) {
+                const error = new Error('GraphQL Errors');
+                error.graphqlErrors = data.errors;
+                this.logger.error(error);
                 continue;
             }
 
@@ -123,8 +135,15 @@ export default class ShopifyOrderBusiness extends CoreClass {
                 input: orderUpdateInput
             });
 
-            if (data.errors) {
-                this.logger.error('GraphQL Errors when updating order metafields:', data.errors);
+            if (!data) {
+                this.throws('Failed to update order metafields: No data returned');
+                return;
+            }
+            
+            if (data.errors && Array.isArray(data.errors) && data.errors.length > 0) {
+                const error = new Error('GraphQL Errors when updating order metafields');
+                error.graphqlErrors = data.errors;
+                this.logger.error(error);
                 this.throws(`Failed to update order metafields: ${data.errors[0]?.message || 'Unknown error'}`);
             }
 

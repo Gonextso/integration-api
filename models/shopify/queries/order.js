@@ -72,7 +72,7 @@ query Orders($cursor: String) {
                     zip
                 }
                 tags
-                metafields(first: 10, namespace: "gonextso_nebim_app", keys: ["order_id"]) {
+                metafields(first: 10, namespace: "gonextso_nebim_app") {
                   edges {
                     node {
                       namespace
@@ -171,7 +171,7 @@ query GetOrdersById($ids: [ID!]!) {
         zip
       }
       tags
-      metafields(first: 10, namespace: "gonextso_nebim_app", keys: ["order_id"]) {
+      metafields(first: 10, namespace: "gonextso_nebim_app") {
         edges {
           node {
             namespace

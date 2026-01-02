@@ -11,18 +11,28 @@ const logger = new LogHelper();
 
 logger.info2('Building mongoose started');
 
-mongoose.connect(process.env.MONGO_URI)
-    .then(async () => {
-        logger.info4('MongoDB Connected');
+// MongoDB connection is optional - only needed for migration
+// Application will continue to work even if MongoDB connection fails
+if (process.env.MONGO_URI) {
+    mongoose.connect(process.env.MONGO_URI)
+        .then(async () => {
+            logger.info4('MongoDB Connected');
 
-        await FailedOrder.syncIndexes();
-        await OrderSyncBatch.syncIndexes();
-        await Tenant.syncIndexes();
-        await SuccessOrder.syncIndexes();
-        await RequestLog.syncIndexes();
-        await SyncedBarcode.syncIndexes();
-    })
-    .catch(err => {
-        logger.error(err);
-        process.exit(1);
-    });
+            try {
+                await FailedOrder.syncIndexes();
+                await OrderSyncBatch.syncIndexes();
+                await Tenant.syncIndexes();
+                await SuccessOrder.syncIndexes();
+                await RequestLog.syncIndexes();
+                await SyncedBarcode.syncIndexes();
+            } catch (indexError) {
+                logger.warn(`MongoDB index sync warning: ${indexError.message}`);
+            }
+        })
+        .catch(err => {
+            logger.warn(`MongoDB connection failed (optional - only needed for migration): ${err.message}`);
+            logger.warn('Application will continue without MongoDB connection');
+        });
+} else {
+    logger.warn('MONGO_URI not set - MongoDB connection skipped (optional - only needed for migration)');
+}

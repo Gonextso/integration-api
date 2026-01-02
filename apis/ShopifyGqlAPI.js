@@ -17,7 +17,18 @@ export default class ShopifyGqlAPI extends CoreAPI {
             }
         });
 
-        return response.data;
+        const data = response.data;
+
+        // GraphQL errors varsa logla (boş array kontrolü)
+        if (data?.errors && Array.isArray(data.errors) && data.errors.length > 0) {
+            const error = new Error('GraphQL Errors in query response');
+            error.graphqlErrors = data.errors;
+            error.query = query;
+            error.variables = variables;
+            this.logger.error(error);
+        }
+
+        return data;
     }
 
     getShopInfo = async (shop, accessToken) => {

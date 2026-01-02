@@ -4,9 +4,9 @@ import CoreClass from "../../core/CoreClass.js";
 import productMutations from "../../models/shopify/mutations/product.js";
 import metafieldQueries from "../../models/shopify/queries/metafield.js";
 import metafieldMutations from "../../models/shopify/mutations/metafield.js";
-import SyncedBarcode from "../../models/db/SyncedBarcode.js";
+import SyncedBarcode from "../../models/db/postgres/SyncedBarcode.js";
 import LimitBusiness from "../LimitBusiness.js";
-import Tenant from "../../models/db/Tenant.js";
+import Tenant from "../../models/db/postgres/Tenant.js";
 import SystemCodes from "../../enums/SystemCodes.js";
 import SystemHelper from "../../helpers/SystemHelper.js";
 
@@ -29,9 +29,7 @@ export default class ShopifyProductBusiness extends CoreClass {
             const barcodes = product.variants.map(x => x.barcode).filter(Boolean);
             const syncedBarcodeDocs = barcodes.length ? await SyncedBarcode.find({
                 barcode: { $in: barcodes },
-                erp: SystemCodes.ERP.V3_INTEGRATOR,
-                ecommerce: SystemCodes.ECOMMERCE.SHOPIFY,
-                tenant: this.tenant._id
+                tenant: this.tenant.id
             }) : [];
             const syncedBarcodeMap = new Map();
             let existingProductId = null;
@@ -44,7 +42,7 @@ export default class ShopifyProductBusiness extends CoreClass {
             }
 
             if (this.tenant.shopify.billing.planKey !== SystemCodes.BILLING_PLANS.ENTERPRISE.KEY) {
-                const limitBusiness = new LimitBusiness(await Tenant.findById(this.tenant._id));
+                const limitBusiness = new LimitBusiness(await Tenant.findById(this.tenant.id));
                 let isProductAlreadySynced = syncedBarcodeDocs.length > 0;
                 let isLimitAvailable = true;
 
@@ -137,7 +135,7 @@ export default class ShopifyProductBusiness extends CoreClass {
 
                 const data = await this.api.query(mutation, variables);
 
-                if (data.errors || data.userErrors || (data.data.productSet.userErrors && data.data.productSet.userErrors.length > 0)) {
+                if (!data || data.errors || data.userErrors || (data.data.productSet.userErrors && data.data.productSet.userErrors.length > 0)) {
                     this.logger.error('GraphQL Errors:', JSON.stringify(data.errors || data.data.productSet.userErrors));
                     continue;
                 }
@@ -162,19 +160,13 @@ export default class ShopifyProductBusiness extends CoreClass {
                     await SyncedBarcode.updateOne(
                         {
                             barcode: variant.barcode,
-                            erp: SystemCodes.ERP.V3_INTEGRATOR,
-                            ecommerce: SystemCodes.ECOMMERCE.SHOPIFY,
-                            tenant: this.tenant._id
+                            tenant: this.tenant.id
                         },
                         {
-                            $set: {
-                                barcode: variant.barcode,
-                                erp: SystemCodes.ERP.V3_INTEGRATOR,
-                                ecommerce: SystemCodes.ECOMMERCE.SHOPIFY,
-                                tenant: this.tenant._id,
-                                productId: shopifyProduct.id ?? existingSync?.productId ?? null,
-                                variantId: variantNode.id ?? existingSync?.variantId ?? null
-                            }
+                            barcode: variant.barcode,
+                            tenant: this.tenant.id,
+                            productId: shopifyProduct.id ?? existingSync?.productId ?? null,
+                            variantId: variantNode.id ?? existingSync?.variantId ?? null
                         },
                         { upsert: true }
                     );
@@ -275,25 +267,19 @@ export default class ShopifyProductBusiness extends CoreClass {
                         const res = await SyncedBarcode.updateOne(
                             {
                                 barcode: variant.barcode,
-                                erp: SystemCodes.ERP.V3_INTEGRATOR,
-                                ecommerce: SystemCodes.ECOMMERCE.SHOPIFY,
-                                tenant: this.tenant._id
+                                tenant: this.tenant.id
                             },
                             {
-                                $set: {
-                                    barcode: variant.barcode,
-                                    erp: SystemCodes.ERP.V3_INTEGRATOR,
-                                    ecommerce: SystemCodes.ECOMMERCE.SHOPIFY,
-                                    tenant: this.tenant._id,
-                                    productId: shopifyProduct.id ?? existingSync?.productId ?? null,
-                                    variantId: variantNode.id ?? existingSync?.variantId ?? null
-                                }
+                                barcode: variant.barcode,
+                                tenant: this.tenant.id,
+                                productId: shopifyProduct.id ?? existingSync?.productId ?? null,
+                                variantId: variantNode.id ?? existingSync?.variantId ?? null
                             },
                             { upsert: true }
                         );
 
                         if (res.upsertedCount) {
-                            const limitBusiness = new LimitBusiness(await Tenant.findById(this.tenant._id));
+                            const limitBusiness = new LimitBusiness(await Tenant.findById(this.tenant.id));
                             await limitBusiness.useLimit(SystemCodes.LIMIT_TYPE.PRODUCT_DETAILS, 1);
                         }
                     }

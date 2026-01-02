@@ -1,7 +1,7 @@
 import CoreClass from "../core/CoreClass.js";
 import SystemCodes from "../enums/SystemCodes.js";
-import SuccessOrder from "../models/db/SuccessOrder.js";
-import Tenant from "../models/db/Tenant.js";
+import SuccessOrder from "../models/db/postgres/SuccessOrder.js";
+import Tenant from "../models/db/postgres/Tenant.js";
 
 export default class LimitBusiness extends CoreClass {
     constructor(tenant) {
@@ -13,10 +13,16 @@ export default class LimitBusiness extends CoreClass {
         limitType = limitType.toUpperCase();
         oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
 
-        const expiredOrders = await SuccessOrder.find({
-            tenant: this.tenant._id,
-            createdAt: { $lte: oneMonthAgo },
-            cleared: { $ne: true }
+        // Get all orders for tenant, then filter by date and cleared status
+        const allOrders = await SuccessOrder.find({
+            tenant: this.tenant.id,
+            cleared: false
+        });
+
+        // Filter expired orders in JavaScript
+        const expiredOrders = allOrders.filter(o => {
+            const orderDate = new Date(o.createdAt);
+            return orderDate <= oneMonthAgo;
         });
 
         const tokensToSubtract = expiredOrders.reduce(
@@ -25,17 +31,31 @@ export default class LimitBusiness extends CoreClass {
         );
 
         if (tokensToSubtract > 0) {
-            const tenant = await Tenant.findById(this.tenant._id);
-            tenant.shopify.billing.limits[SystemCodes.LIMIT_TYPE[limitType]].used = Math.max(
+            const tenant = await Tenant.findById(this.tenant.id);
+            const newUsed = Math.max(
                 0,
                 tenant.shopify.billing.limits[SystemCodes.LIMIT_TYPE[limitType]].used - tokensToSubtract
             );
-            await tenant.save();
 
-            await SuccessOrder.updateMany(
-                { _id: { $in: expiredOrders.map((o) => o._id) } },
-                { $set: { cleared: true } }
+            // Update tenant pricing
+            await Tenant.updateOne(
+                { id: this.tenant.id },
+                {
+                    "shopify.billing.limits": {
+                        [SystemCodes.LIMIT_TYPE[limitType]]: {
+                            used: newUsed
+                        }
+                    }
+                }
             );
+
+            // Update all expired orders to cleared
+            for (const order of expiredOrders) {
+                await SuccessOrder.updateOne(
+                    { id: order.id },
+                    { cleared: true }
+                );
+            }
         }
     }
 
@@ -52,10 +72,19 @@ export default class LimitBusiness extends CoreClass {
 
     useLimit = async (limitType, limitAmount) => {
         limitType = limitType.toUpperCase();
-        const tenant = await Tenant.findById(this.tenant._id);
+        const tenant = await Tenant.findById(this.tenant.id);
 
-        tenant.shopify.billing.limits[SystemCodes.LIMIT_TYPE[limitType]].used += limitAmount;
+        const newUsed = tenant.shopify.billing.limits[SystemCodes.LIMIT_TYPE[limitType]].used + limitAmount;
 
-        await tenant.save()
+        await Tenant.updateOne(
+            { id: this.tenant.id },
+            {
+                "shopify.billing.limits": {
+                    [SystemCodes.LIMIT_TYPE[limitType]]: {
+                        used: newUsed
+                    }
+                }
+            }
+        );
     }
 }
