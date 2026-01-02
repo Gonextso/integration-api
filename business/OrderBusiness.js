@@ -1,11 +1,11 @@
 import CoreClass from "../core/CoreClass.js";
 import SystemCodes from "../enums/SystemCodes.js";
-import OrderSyncBatch from "../models/db/OrderSyncBatch.js";
-import FailedOrder from "../models/db/FailedOrder.js";
+import OrderSyncBatch from "../models/db/postgres/OrderSyncBatch.js";
+import FailedOrder from "../models/db/postgres/FailedOrder.js";
 import NebimOrderBusiness from "./nebim/OrderBusiness.js";
 import ShopifyOrderBusiness from "./shopify/OrderBusiness.js";
-import SuccessOrder from "../models/db/SuccessOrder.js";
-import RequestLog from "../models/db/RequestLog.js";
+import SuccessOrder from "../models/db/postgres/SuccessOrder.js";
+import RequestLog from "../models/db/postgres/RequestLog.js";
 
 export default class OrderBusiness extends CoreClass {
     constructor(tenant) {
@@ -28,15 +28,13 @@ export default class OrderBusiness extends CoreClass {
 
             const craeteOrderResults = await nebimOrderBusiness.createOrders(shopifyOrderList);
 
-            const orderSyncBatch = new OrderSyncBatch({
+            const orderSyncBatch = await OrderSyncBatch.create({
                 request: {
                     startDate: startDate,
                     endDate: endDate
                 },
-                erp: SystemCodes.ERP.V3_INTEGRATOR,
-                ecommerce: SystemCodes.ECOMMERCE.SHOPIFY,
                 process: SystemCodes.PROCESS.SYNC_ORDERS,
-                tenant: this.tenant._id,
+                tenant: this.tenant.id,
                 traceId: this.traceId,
                 isErrorLogExistsForThisBatch: craeteOrderResults.failedOrders.length > 0,
                 numbers: {
@@ -58,18 +56,14 @@ export default class OrderBusiness extends CoreClass {
 
             if (craeteOrderResults.failedOrders.length) {
                 for (const failedOrder of craeteOrderResults.failedOrders) {
-                    const failedOrderDoc = new FailedOrder({
-                        ecommerceId: failedOrder.ecommerceId,
-                        ecommerce: SystemCodes.ECOMMERCE.SHOPIFY,
-                        erp: SystemCodes.ERP.V3_INTEGRATOR,
-                        tenant: this.tenant._id,
+                    await FailedOrder.create({
+                        shopifyOrderId: failedOrder.ecommerceId,
+                        tenant: this.tenant.id,
                         traceId: this.traceId,
-                        syncBatchId: orderSyncBatch._id,
+                        syncBatchId: orderSyncBatch.id,
                         reason: failedOrder.reason,
                         process: failedOrder.process
                     });
-
-                    failedOrderDoc.save();
                 }
             }
 
@@ -81,21 +75,17 @@ export default class OrderBusiness extends CoreClass {
                         erpId: successOrder.erpId
                     });
 
-                    const successOrderDoc = new SuccessOrder({
-                        ecommerce: SystemCodes.ECOMMERCE.SHOPIFY,
-                        erp: SystemCodes.ERP.V3_INTEGRATOR,
-                        tenant: this.tenant._id,
+                    await SuccessOrder.create({
+                        tenant: this.tenant.id,
                         traceId: this.traceId,
-                        syncBatchId: orderSyncBatch._id,
-                        ecommerceId: successOrder.ecommerceId,
+                        syncBatchId: orderSyncBatch.id,
+                        shopifyOrderId: successOrder.ecommerceId,
+                        nebimOrderId: successOrder.erpId,
                         lines: successOrder.lines,
                         partiallyCancelledLines: successOrder.partiallyCancelledLines,
                         isCancelled: successOrder.isCancelled,
                         isPartiallyCancelled: successOrder.isPartiallyCancelled,
-                        erpId: successOrder.erpId
                     });
-
-                    successOrderDoc.save();
                 }
             }
 
@@ -107,54 +97,53 @@ export default class OrderBusiness extends CoreClass {
 
             if (cancelOrders.failedOrders.length) {
                 for (const failedOrder of cancelOrders.failedOrders) {
-                    const failedOrderDoc = new FailedOrder({
-                        ecommerceId: failedOrder.ecommerceId,
-                        erp: SystemCodes.ERP.V3_INTEGRATOR,
-                        erpId: failedOrder.erpId,
-                        ecommerce: SystemCodes.ECOMMERCE.SHOPIFY,
-                        tenant: this.tenant._id,
+                    await FailedOrder.create({
+                        shopifyOrderId: failedOrder.ecommerceId,
+                        tenant: this.tenant.id,
                         traceId: this.traceId,
-                        syncBatchId: orderSyncBatch._id,
+                        syncBatchId: orderSyncBatch.id,
                         reason: failedOrder.reason,
                         process: failedOrder.process,
                         isCancelled: true
                     });
-
-                    failedOrderDoc.save();
                 }
             }
 
             if (cancelOrders.successOrders.length) {
                 for (const successOrder of cancelOrders.successOrders) {
-                    const successOrderDoc = new SuccessOrder({
-                        ecommerce: SystemCodes.ECOMMERCE.SHOPIFY,
-                        erp: SystemCodes.ERP.V3_INTEGRATOR,
-                        tenant: this.tenant._id,
+                    await SuccessOrder.create({
+                        tenant: this.tenant.id,
                         traceId: this.traceId,
-                        syncBatchId: orderSyncBatch._id,
-                        ecommerceId: successOrder.ecommerceId,
+                        syncBatchId: orderSyncBatch.id,
+                        shopifyOrderId: successOrder.ecommerceId,
+                        nebimOrderId: successOrder.erpId,
                         lines: successOrder.lines,
                         isCancelled: successOrder.isCancelled,
-                        erpId: successOrder.erpId
                     });
-
-                    successOrderDoc.save();
                 }
             }
 
-            orderSyncBatch.numbers = {
-                ...orderSyncBatch.numbers,
-                cancelOrderSuccess: cancelOrders.successOrders.length,
-                cancelOrderError: cancelOrders.failedOrders.length,
-                cancelOrderSkippedTotal: cancelOrders.skippedAlreadySyncedOrders + cancelOrders.skippedFailedOrderCount + cancelOrders.skippedNotSyncedCancelOrders,
-                cancelOrderSkippedAlreadySynced: cancelOrders.skippedAlreadySyncedOrders,
-                cancelOrderSkippedFailed: cancelOrders.skippedFailedOrderCount,
-                cancelOrderSkippedNotFound: cancelOrders.skippedNotSyncedCancelOrders
-            }
-
-            orderSyncBatch.save();
+            await OrderSyncBatch.updateOne(
+                { id: orderSyncBatch.id },
+                {
+                    numbers: {
+                        ...orderSyncBatch.numbers,
+                        cancelOrderSuccess: cancelOrders.successOrders.length,
+                        cancelOrderError: cancelOrders.failedOrders.length,
+                        cancelOrderSkippedTotal: cancelOrders.skippedAlreadySyncedOrders + cancelOrders.skippedFailedOrderCount + cancelOrders.skippedNotSyncedCancelOrders,
+                        cancelOrderSkippedAlreadySynced: cancelOrders.skippedAlreadySyncedOrders,
+                        cancelOrderSkippedFailed: cancelOrders.skippedFailedOrderCount,
+                        cancelOrderSkippedNotFound: cancelOrders.skippedNotSyncedCancelOrders
+                    }
+                }
+            );
         } catch (error) {
-            this.logger.error(new Error(`Error syncing Shopify to Nebim for ${startDate} to ${endDate}, error: ${error.message}`));
+            const syncError = new Error(`Error syncing Shopify to Nebim for ${startDate} to ${endDate}`);
+            if (error instanceof Error) {
+                syncError.stack = error.stack;
+                syncError.cause = error;
+            }
+            this.logger.error(syncError);
         } finally {
             this.logger.info(`Sync order Shopify to Nebim finished for ${startDate} to ${endDate}`);
         }
@@ -165,27 +154,25 @@ export default class OrderBusiness extends CoreClass {
             this.logger.info(`Get Sync failed orders started for ${erp} and ${ecommerce}`);
             
             const query = {
-                erp,
-                ecommerce,
-                tenant: this.tenant._id
+                tenant: this.tenant.id
             };
 
-            const failedOrdersList = await FailedOrder.find(query).sort({ syncDate: -1 });
+            const failedOrdersList = await FailedOrder.find(query);
 
             const latestErrorsByEcomId = new Map();
 
             for (const log of failedOrdersList) {
                 const { ecommerceId, traceId } = log;
                 if (ecommerceId && !latestErrorsByEcomId.has(ecommerceId)) {
-                    const requestLogBody = await RequestLog
-                        .findOne({ 
-                            tenant: this.tenant._id, 
-                            traceId,
-                            transactionId: { $regex: ecommerceId, $options: 'i' }
-                        })
-                        .sort({ createdAt: -1 })
-                        .select({ body: 1, _id: 0, isError: 1, response: 1 })
-                        .lean();
+                    const requestLogs = await RequestLog.find({ 
+                        tenant: this.tenant.id, 
+                        traceId,
+                    });
+                    
+                    // Filter by transactionId containing ecommerceId
+                    const requestLogBody = requestLogs.find(log => 
+                        log.transactionId && log.transactionId.toLowerCase().includes(ecommerceId.toLowerCase())
+                    );
 
                     let requestBodyBeautified = "", responseBodyBeautified = "";
                     if (requestLogBody?.isError) {
@@ -216,7 +203,7 @@ export default class OrderBusiness extends CoreClass {
                     } : null;
 
                     const returnResult = {
-                        ...log._doc,
+                        ...log,
                         reasonDetail
                     } 
 
@@ -227,7 +214,12 @@ export default class OrderBusiness extends CoreClass {
 
             return Array.from(latestErrorsByEcomId.values());
         } catch (error) {
-            this.logger.error(new Error(`Error getting sync failed orders for ${erp} and ${ecommerce}, error: ${error.message}`));
+            const syncError = new Error(`Error getting sync failed orders for ${erp} and ${ecommerce}`);
+            if (error instanceof Error) {
+                syncError.stack = error.stack;
+                syncError.cause = error;
+            }
+            this.logger.error(syncError);
             return [];
         } finally {
             this.logger.info(`Get sync failed orders finished for ${erp} and ${ecommerce}`);
@@ -241,33 +233,36 @@ export default class OrderBusiness extends CoreClass {
             const nebimOrderBusiness = new NebimOrderBusiness(this.tenant);
             const shopifyOrderBusiness = new ShopifyOrderBusiness(this.tenant);
             const orderMetadataMapping = [];
-            const createdQuery = {
-                erp,
-                ecommerce,
-                tenant: this.tenant._id,
-                ecommerceId: { $in: orderNumberList },
+            const allFailedOrders = await FailedOrder.find({
+                tenant: this.tenant.id,
                 isCancelled: false
-            };
+            });
+            const failedOrderList = allFailedOrders.filter(o => orderNumberList.includes(o.shopifyOrderId || o.ecommerceId));
 
-            const failedOrderList = await FailedOrder.find(createdQuery);
-
-            const orderSyncBatch = new OrderSyncBatch({
+            const orderSyncBatch = await OrderSyncBatch.create({
                 request: {
                     orderNumberList: orderNumberList
                 },
-                erp: SystemCodes.ERP.V3_INTEGRATOR,
-                ecommerce: SystemCodes.ECOMMERCE.SHOPIFY,
                 process: SystemCodes.PROCESS.SYNC_FAILED_ORDERS,
-                tenant: this.tenant._id,
+                tenant: this.tenant.id,
                 traceId: this.traceId,
-                successList: [],
-                failedList: [],
-                isErrorLogExistsForThisBatch: 0,
-                totalFetchedOrderCount: 0,
-                skippedOrderCount: 0,
-                skippedFailedOrderCount: 0,
-                cancelledOrderCount: 0,
-                skippedAlreadySyncedOrderCount: 0,
+                isErrorLogExistsForThisBatch: false,
+                numbers: {
+                    total: 0,
+                    createOrderTotal: 0,
+                    createOrderSuccess: 0,
+                    createOrderError: 0,
+                    createOrderSkippedTotal: 0,
+                    createOrderSkippedAlreadySynced: 0,
+                    createOrderSkippedFailed: 0,
+                    cancelOrderTotal: 0,
+                    cancelOrderSuccess: 0,
+                    cancelOrderError: 0,
+                    cancelOrderSkippedTotal: 0,
+                    cancelOrderSkippedAlreadySynced: 0,
+                    cancelOrderSkippedFailed: 0,
+                    cancelOrderSkippedNotFound: 0,
+                }
             });
 
             if (failedOrderList.length) {
@@ -283,59 +278,46 @@ export default class OrderBusiness extends CoreClass {
                 const craeteOrderResults = await nebimOrderBusiness.createOrders(orderList, true);
 
                 for (const failedOrder of craeteOrderResults.failedOrders) {
-                    FailedOrder.findOneAndUpdate(
+                    await FailedOrder.updateOne(
                         {
-                            ecommerceId: failedOrder.ecommerceId,
-                            ecommerce: SystemCodes.ECOMMERCE.SHOPIFY,
-                            erp: SystemCodes.ERP.V3_INTEGRATOR,
-                            tenant: this.tenant._id
+                            shopifyOrderId: failedOrder.ecommerceId,
+                            tenant: this.tenant.id
                         },
                         {
-                            $set: {
-                                syncBatchId: orderSyncBatch._id,
-                                traceId: this.traceId,
-                                reason: failedOrder.reason,
-                                process: failedOrder.process,
-                                updatedAt: new Date()
-                            }
+                            syncBatchId: orderSyncBatch.id,
+                            traceId: this.traceId,
+                            reason: failedOrder.reason,
+                            process: failedOrder.process
                         },
-                        { upsert: true, new: true, setDefaultsOnInsert: true }
-                    )
-                        .exec()
+                        { upsert: true }
+                    );
                 }
 
                 if (craeteOrderResults.successOrders.length) {
                     for (const successOrder of craeteOrderResults.successOrders) {
-                        const successOrderDoc = new SuccessOrder({
-                            ecommerce: SystemCodes.ECOMMERCE.SHOPIFY,
-                            erp: SystemCodes.ERP.V3_INTEGRATOR,
-                            tenant: this.tenant._id,
-                            syncBatchId: orderSyncBatch._id,
+                        await SuccessOrder.create({
+                            tenant: this.tenant.id,
+                            syncBatchId: orderSyncBatch.id,
                             traceId: this.traceId,
-                            ecommerceId: successOrder.ecommerceId,
+                            shopifyOrderId: successOrder.ecommerceId,
+                            nebimOrderId: successOrder.erpId,
                             lines: successOrder.lines,
-                            isCancelled: successOrder.isCancelled,
-                            erpId: successOrder.erpId
+                            isCancelled: successOrder.isCancelled
                         });
-
-                        successOrderDoc.save();
                     }
                 }
 
                 for (const successOrder of craeteOrderResults.successOrders) {
-
                     orderMetadataMapping.push({
                         ecommerceId: successOrder.ecommerceId.split('.')[1],
                         erpId: successOrder.erpId
                     });
 
-                    FailedOrder.deleteOne({
-                        ecommerceId: successOrder.ecommerceId,
-                        ecommerce: SystemCodes.ECOMMERCE.SHOPIFY,
-                        erp: SystemCodes.ERP.V3_INTEGRATOR,
-                        tenant: this.tenant._id,
+                    await FailedOrder.deleteOne({
+                        shopifyOrderId: successOrder.ecommerceId,
+                        tenant: this.tenant.id,
                         isCancelled: false
-                    }).exec();
+                    });
                 }
 
                 if (orderMetadataMapping.length) { //TODO: there is 2 for loop for craeteOrderResults.successOrders merge them
@@ -354,15 +336,14 @@ export default class OrderBusiness extends CoreClass {
                 this.logger.info(`No failed orders found`);
             }
 
-            const cancelQuery = {
-                erp,
-                ecommerce,
-                tenant: this.tenant._id,
-                ecommerceId: { $in: orderNumberList },
+            // Get all failed cancel orders for tenant, then filter by orderNumberList
+            const allFailedCancelOrders = await FailedOrder.find({
+                tenant: this.tenant.id,
                 isCancelled: true
-            };
-
-            const failedCancelOrderList = await FailedOrder.find(cancelQuery);
+            });
+            const failedCancelOrderList = allFailedCancelOrders.filter(o => 
+                orderNumberList.includes(o.shopifyOrderId || o.ecommerceId)
+            );
 
             if (failedCancelOrderList.length) {
                 this.logger.info(`${failedCancelOrderList.length} failed cancel orders found, sync started`);
@@ -378,52 +359,41 @@ export default class OrderBusiness extends CoreClass {
                 const cancelOrderResults = await nebimOrderBusiness.cancelOrders(cancelOrderList, true);
 
                 for (const failedOrder of cancelOrderResults.failedOrders) {
-                    FailedOrder.findOneAndUpdate(
+                    await FailedOrder.updateOne(
                         {
-                            ecommerceId: failedOrder.ecommerceId,
-                            ecommerce: SystemCodes.ECOMMERCE.SHOPIFY,
-                            erp: SystemCodes.ERP.V3_INTEGRATOR,
-                            tenant: this.tenant._id
+                            shopifyOrderId: failedOrder.ecommerceId,
+                            tenant: this.tenant.id
                         },
                         {
-                            $set: {
-                                syncBatchId: orderSyncBatch._id,
-                                traceId: this.traceId,
-                                reason: failedOrder.reason,
-                                process: failedOrder.process
-                            }
+                            syncBatchId: orderSyncBatch.id,
+                            traceId: this.traceId,
+                            reason: failedOrder.reason,
+                            process: failedOrder.process
                         },
-                        { upsert: true, new: true, setDefaultsOnInsert: true }
-                    )
-                        .exec()
+                        { upsert: true }
+                    );
                 }
 
                 if (cancelOrderResults.successOrders.length) {
                     for (const successOrder of cancelOrderResults.successOrders) {
-                        const successOrderDoc = new SuccessOrder({
-                            ecommerce: SystemCodes.ECOMMERCE.SHOPIFY,
-                            erp: SystemCodes.ERP.V3_INTEGRATOR,
-                            tenant: this.tenant._id,
-                            syncBatchId: orderSyncBatch._id,
+                        await SuccessOrder.create({
+                            tenant: this.tenant.id,
+                            syncBatchId: orderSyncBatch.id,
                             traceId: this.traceId,
-                            ecommerceId: successOrder.ecommerceId,
+                            shopifyOrderId: successOrder.ecommerceId,
+                            nebimOrderId: successOrder.erpId,
                             lines: successOrder.lines,
-                            isCancelled: successOrder.isCancelled,
-                            erpId: successOrder.erpId
+                            isCancelled: successOrder.isCancelled
                         });
-
-                        successOrderDoc.save();
                     }
                 }
 
                 for (const successOrder of cancelOrderResults.successOrders) {
-                    FailedOrder.deleteOne({
-                        ecommerceId: successOrder.ecommerceId,
-                        ecommerce: SystemCodes.ECOMMERCE.SHOPIFY,
-                        erp: SystemCodes.ERP.V3_INTEGRATOR,
-                        tenant: this.tenant._id,
+                    await FailedOrder.deleteOne({
+                        shopifyOrderId: successOrder.ecommerceId,
+                        tenant: this.tenant.id,
                         isCancelled: true
-                    }).exec();
+                    });
                 }
 
                 orderSyncBatch.successList = [...orderSyncBatch.successList, ...cancelOrderResults.successOrders.map(x => (x.ecommerceId))];
@@ -437,9 +407,17 @@ export default class OrderBusiness extends CoreClass {
                 this.logger.info(`No failed cancel orders found`);
             }
 
-            orderSyncBatch.save();
+            await OrderSyncBatch.updateOne(
+                { id: orderSyncBatch.id },
+                orderSyncBatch
+            );
         } catch (error) {
-            this.logger.error(new Error(`Error syncing failed orders for ${erp}, ${ecommerce}, error: ${error.message}`));
+            const syncError = new Error(`Error syncing failed orders for ${erp}, ${ecommerce}`);
+            if (error instanceof Error) {
+                syncError.stack = error.stack;
+                syncError.cause = error;
+            }
+            this.logger.error(syncError);
         } finally {
             this.logger.info(`Sync failed orders finished for ${erp}, ${ecommerce}`);
         }
@@ -456,7 +434,12 @@ export default class OrderBusiness extends CoreClass {
 
             await shopifyOrderBusiness.updateOrderFullfillmentStatus(orderStatusList)
         } catch (error) {
-            this.logger.error(new Error(`Error syncing order status for ${startDate}, error: ${error.message}`));
+            const syncError = new Error(`Error syncing order status for ${startDate}`);
+            if (error instanceof Error) {
+                syncError.stack = error.stack;
+                syncError.cause = error;
+            }
+            this.logger.error(syncError);
         } finally {
             this.logger.info(`Sync order status finished for ${startDate}`);
         }

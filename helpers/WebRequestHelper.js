@@ -1,7 +1,7 @@
 import axios from "axios";
 import CoreClass from "../core/CoreClass.js";
 import StringHelper from "./StringHelper.js";
-import RequestLog from "../models/db/RequestLog.js";
+import RequestLog from "../models/db/postgres/RequestLog.js";
 import CLSHelper from "./CLSHelper.js";
 
 export default class WebRequestHelper extends CoreClass {
@@ -97,8 +97,8 @@ export default class WebRequestHelper extends CoreClass {
 
         const caller = getCallerInfo();
 
-        const log = RequestLog({
-            tenant: this.tenant._id,
+        const logData = {
+            tenant: this.tenant.id || this.tenant._id,
             requestId: id,
             traceId: CLSHelper.get('traceId'),
             transactionId: CLSHelper.get('trancationId'),
@@ -110,37 +110,42 @@ export default class WebRequestHelper extends CoreClass {
             url: args[0],
             headers: args[2] && args[2].headers ? JSON.stringify(this.#removeSecrets(args[2].headers)) : "",
             body: JSON.stringify(args[1])
-        })
+        };
+        
+        let log = null;
 
         return method()
-            .then(result => {
+            .then(async result => {
                 this.logger.info3(`request_id:${id} - Processed in ${this.#getEndTime(start).toFixed(2)} ms`);
                 const responseString = JSON.stringify(result.data);
 
-                log.status = result.status;
-                log.responseTime = this.#getEndTime(start).toFixed(2);
-                log.response = Buffer.byteLength(responseString, 'utf8') > 3 * 1024 * 1024 //TODO: implement plus subscibers can hold up to 16mb log
+                logData.status = result.status;
+                logData.responseTime = this.#getEndTime(start).toFixed(2);
+                logData.response = Buffer.byteLength(responseString, 'utf8') > 3 * 1024 * 1024 //TODO: implement plus subscibers can hold up to 16mb log
                     ? "data is larger than 3mb truncated"
                     : responseString;
 
                 if (caller.className === 'NebimV3IntegratorAPI' && result.data.ExceptionMessage) {
-                    log.isError = true;
+                    logData.isError = true;
                 }
+
+                // Save log
+                await RequestLog.create(logData);
 
                 return result;
             })
-            .catch(error => {
+            .catch(async error => {
                 if (axios.isAxiosError(error)) {
-                    log.isError = true;
-                    log.status = error.status;
-                    log.responseTime = this.#getEndTime(start).toFixed(2);
-                    log.response = JSON.stringify(error.data);
+                    logData.isError = true;
+                    logData.status = error.status;
+                    logData.responseTime = this.#getEndTime(start).toFixed(2);
+                    logData.response = JSON.stringify(error.data);
                 }
 
+                // Save log
+                await RequestLog.create(logData);
+
                 return error;
-            })
-            .finally(_ => {
-                log.save() //TODO: can be closed via interaction for success logs. nebim returns 200 anytime
             })
     }
 }

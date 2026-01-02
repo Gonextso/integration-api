@@ -5,11 +5,11 @@ import NebimV3IntegratorAPI from "../../apis/NebimV3IntegratorAPI.js"
 import SystemHelper from "../../helpers/SystemHelper.js";
 import NebimCustomerBusiness from "./CustomerBusiness.js";
 import NebimObjectHelper from "../../helpers/NebimObjectHelper.js";
-import FailedOrder from "../../models/db/FailedOrder.js";
+import FailedOrder from "../../models/db/postgres/FailedOrder.js";
 import SystemCodes from "../../enums/SystemCodes.js";
-import SuccessOrder from "../../models/db/SuccessOrder.js";
+import SuccessOrder from "../../models/db/postgres/SuccessOrder.js";
 import LimitBusiness from "../LimitBusiness.js";
-import Tenant from "../../models/db/Tenant.js";
+import Tenant from "../../models/db/postgres/Tenant.js";
 
 export default class NebimOrderBusiness extends CoreClass {
     constructor(tenant) {
@@ -38,10 +38,10 @@ export default class NebimOrderBusiness extends CoreClass {
 
         if (this.tenant.shopify.billing.planKey === SystemCodes.BILLING_PLANS.ENTERPRISE.KEY) {
             for (const order of orderList.filter(x => !x.is_cancelled)) {
-                const isFailedOrderExists = Boolean(await FailedOrder.findOne({ tenant: this.tenant._id, ecommerceId: order.order_id, isCancelled: false }));
+                const isFailedOrderExists = Boolean(await FailedOrder.findOne({ tenant: this.tenant.id, shopifyOrderId: order.order_id, isCancelled: false }));
 
                 const isOrderSynced = Boolean(
-                    await SuccessOrder.findOne({ ecommerceId: order.order_id, tenant: this.tenant._id, ecommerce: order.platform, erp: SystemCodes.ERP.V3_INTEGRATOR, isCancelled: false })
+                    await SuccessOrder.findOne({ shopifyOrderId: order.order_id, tenant: this.tenant.id, isCancelled: false })
                 );
 
                 if (isOrderSynced) {
@@ -58,7 +58,7 @@ export default class NebimOrderBusiness extends CoreClass {
                 let customer = {};
 
                 promises.push(SystemHelper.createTransaction(this.tenant, transaction, async () => {
-                    const limitBusiness = new LimitBusiness(await Tenant.findById(this.tenant._id));
+                    const limitBusiness = new LimitBusiness(await Tenant.findById(this.tenant.id));
                     let orderNumber = "";
 
                     try {
@@ -122,7 +122,7 @@ export default class NebimOrderBusiness extends CoreClass {
             }
         } else {
             for (const order of orderList.filter(x => !x.is_cancelled)) {
-                const isFailedOrderExists = Boolean(await FailedOrder.findOne({ tenant: this.tenant._id, ecommerceId: order.order_id, isCancelled: false }));
+                const isFailedOrderExists = Boolean(await FailedOrder.findOne({ tenant: this.tenant.id, shopifyOrderId: order.order_id, isCancelled: false }));
 
                 if (isFailedOrderExists && !dontSkipFailedOrders) {
                     skippedFailedOrderCount++
@@ -130,7 +130,7 @@ export default class NebimOrderBusiness extends CoreClass {
                 }
 
                 const isOrderSynced = Boolean(
-                    await SuccessOrder.findOne({ ecommerceId: order.order_id, tenant: this.tenant._id, ecommerce: order.platform, erp: SystemCodes.ERP.V3_INTEGRATOR, isCancelled: false })
+                    await SuccessOrder.findOne({ shopifyOrderId: order.order_id, tenant: this.tenant.id, isCancelled: false })
                 );
 
                 if (isOrderSynced) {
@@ -147,7 +147,7 @@ export default class NebimOrderBusiness extends CoreClass {
                 let customer = {};
                 
                 const result = await SystemHelper.createTransaction(this.tenant, transaction, async () => {
-                    const limitBusiness = new LimitBusiness(await Tenant.findById(this.tenant._id));
+                    const limitBusiness = new LimitBusiness(await Tenant.findById(this.tenant.id));
                     let orderNumber = "";
                     try {
                         await limitBusiness.checkLimitAvailability(SystemCodes.LIMIT_TYPE.ORDER, 1) //TODO: order token
@@ -233,9 +233,9 @@ export default class NebimOrderBusiness extends CoreClass {
         let skippedNotSyncedCancelOrders = 0;
 
         for (const order of orderList.filter(x => x.is_cancelled)) {
-            const isFailedOrderExists = Boolean(await FailedOrder.findOne({ tenant: this.tenant._id, ecommerceId: order.order_id, isCancelled: true }));
+            const isFailedOrderExists = Boolean(await FailedOrder.findOne({ tenant: this.tenant.id, shopifyOrderId: order.order_id, isCancelled: true }));
 
-            const createdOrder = await SuccessOrder.findOne({ ecommerceId: order.order_id, tenant: this.tenant._id, ecommerce: order.platform, erp: SystemCodes.ERP.V3_INTEGRATOR })
+            const createdOrder = await SuccessOrder.findOne({ shopifyOrderId: order.order_id, tenant: this.tenant.id })
 
             if (!Boolean(createdOrder)) {
                 skippedNotSyncedCancelOrders++

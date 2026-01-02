@@ -56,14 +56,14 @@ export default class ShopifyObjectHelper extends CoreClass {
                     phone: x.customer.phone,
                     shopify_id: x.customer.id,
                     consents: {
-                        email: {
+                        email: x.customer.emailMarketingConsent ?{
                             date: x.customer.emailMarketingConsent.consentUpdatedAt,
                             is_opt_in: x.customer.emailMarketingConsent.marketingState === "SUBSCRIBED"
-                        },
-                        gsm: {
+                        } : null,
+                        gsm: x.customer.smsMarketingConsent ? {
                             date: x.customer.smsMarketingConsent.consentUpdatedAt,
                             is_opt_in: x.customer.smsMarketingConsent.marketingState === "SUBSCRIBED"
-                        }
+                        } : null
                     }
                 },
                 address: {
