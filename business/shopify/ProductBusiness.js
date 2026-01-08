@@ -43,7 +43,7 @@ export default class ShopifyProductBusiness extends CoreClass {
                 }
             }
 
-            if (this.tenant.shopify.billing.planKey !== SystemCodes.BILLING_PLANS.ENTERPRISE.KEY && this.tenant.shopify.billing.planKey !== SystemCodes.BILLING_PLANS.PRO.KEY) {
+            if (this.tenant.shopify.billing.planKey !== SystemCodes.BILLING_PLANS.ENTERPRISE.KEY) {
                 const limitBusiness = new LimitBusiness(await Tenant.findById(this.tenant.id));
                 let isProductAlreadySynced = syncedBarcodeDocs.length > 0;
                 let isLimitAvailable = true;
@@ -183,7 +183,7 @@ export default class ShopifyProductBusiness extends CoreClass {
                     );
                 }
 
-                if (this.tenant.shopify.billing.planKey !== SystemCodes.BILLING_PLANS.ENTERPRISE.KEY && this.tenant.shopify.billing.planKey !== SystemCodes.BILLING_PLANS.PRO.KEY && !isProductAlreadySynced)
+                if (this.tenant.shopify.billing.planKey !== SystemCodes.BILLING_PLANS.ENTERPRISE.KEY && !isProductAlreadySynced)
                     await limitBusiness.useLimit(SystemCodes.LIMIT_TYPE.PRODUCT_DETAILS, product.variants.length);
             } else if (this.tenant.shopify.billing.planKey === SystemCodes.BILLING_PLANS.ENTERPRISE.KEY || this.tenant.shopify.billing.planKey === SystemCodes.BILLING_PLANS.PRO.KEY) {
                 promises.push(async () => {
@@ -214,6 +214,19 @@ export default class ShopifyProductBusiness extends CoreClass {
                             localSyncedBarcodeMap.set(doc.barcode, doc);
                             if (!localExistingProductId && doc.productId) {
                                 localExistingProductId = doc.productId;
+                            }
+                        }
+
+                        // Check limit availability for PRO plan (ENTERPRISE skips limit check)
+                        if (this.tenant.shopify.billing.planKey === SystemCodes.BILLING_PLANS.PRO.KEY) {
+                            const limitBusiness = new LimitBusiness(await Tenant.findById(this.tenant.id));
+                            for (const variant of product.variants) {
+                                try {
+                                    await limitBusiness.checkLimitAvailability(SystemCodes.LIMIT_TYPE.PRODUCT_DETAILS, 1);
+                                } catch (error) {
+                                    this.logger.warn2(`SKU limit exceed for product ${product.erp_id}, variant ${variant.barcode}`);
+                                    return;
+                                }
                             }
                         }
 
@@ -316,7 +329,7 @@ export default class ShopifyProductBusiness extends CoreClass {
                             const variant = product.variants[index];
                             const existingSync = localSyncedBarcodeMap.get(variant.barcode);
                             const variantNode = variantNodes[index] ?? {};
-                            const res = await SyncedBarcode.updateOne(
+                            await SyncedBarcode.updateOne(
                                 {
                                     barcode: variant.barcode,
                                     tenant: this.tenant.id
@@ -330,10 +343,9 @@ export default class ShopifyProductBusiness extends CoreClass {
                                 { upsert: true }
                             );
 
-                            if (res.upsertedCount) {
-                                const limitBusiness = new LimitBusiness(await Tenant.findById(this.tenant.id));
-                                await limitBusiness.useLimit(SystemCodes.LIMIT_TYPE.PRODUCT_DETAILS, 1);
-                            }
+                            // Increment limit usage for PRO and ENTERPRISE on every sync
+                            const limitBusiness = new LimitBusiness(await Tenant.findById(this.tenant.id));
+                            await limitBusiness.useLimit(SystemCodes.LIMIT_TYPE.PRODUCT_DETAILS, 1);
                         }
                     } finally {
                         // Always release locks, even if error occurred
