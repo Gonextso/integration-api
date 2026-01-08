@@ -6,10 +6,12 @@ import NebimOrderBusiness from "./nebim/OrderBusiness.js";
 import ShopifyOrderBusiness from "./shopify/OrderBusiness.js";
 import SuccessOrder from "../models/db/postgres/SuccessOrder.js";
 import RequestLog from "../models/db/postgres/RequestLog.js";
+import SyncQueue from "../queue/SyncQueue.js";
 
 export default class OrderBusiness extends CoreClass {
     constructor(tenant) {
         super(tenant);
+        this.syncQueue = new SyncQueue();
     }
 
     syncShopifyToNebim = async (startDate, endDate) => {
@@ -18,7 +20,6 @@ export default class OrderBusiness extends CoreClass {
             
             const shopifyOrderBusiness = new ShopifyOrderBusiness(this.tenant);
             const nebimOrderBusiness = new NebimOrderBusiness(this.tenant);
-            const orderMetadataMapping = [];
 
             const shopifyOrderList = await shopifyOrderBusiness.getOrders(startDate, endDate);
 
@@ -26,8 +27,7 @@ export default class OrderBusiness extends CoreClass {
 
             await nebimOrderBusiness.cacheDefaults();
 
-            const craeteOrderResults = await nebimOrderBusiness.createOrders(shopifyOrderList);
-
+            // Create batch first
             const orderSyncBatch = await OrderSyncBatch.create({
                 request: {
                     startDate: startDate,
@@ -36,107 +36,45 @@ export default class OrderBusiness extends CoreClass {
                 process: SystemCodes.PROCESS.SYNC_ORDERS,
                 tenant: this.tenant.id,
                 traceId: this.traceId,
-                isErrorLogExistsForThisBatch: craeteOrderResults.failedOrders.length > 0,
+                isErrorLogExistsForThisBatch: false,
                 numbers: {
                     total: shopifyOrderList.length,
                     createOrderTotal: shopifyOrderList.filter(x => !x.is_cancelled).length,
-                    createOrderSuccess: craeteOrderResults.successOrders.length,
-                    createOrderError: craeteOrderResults.failedOrders.length,
-                    createOrderSkippedTotal: craeteOrderResults.skippedFailedOrderCount + craeteOrderResults.skippedAlreadySyncedOrders,
-                    createOrderSkippedAlreadySynced: craeteOrderResults.skippedAlreadySyncedOrders,
-                    createOrderSkippedFailed: craeteOrderResults.skippedFailedOrderCount,
+                    createOrderSuccess: 0,
+                    createOrderError: 0,
+                    createOrderSkippedTotal: 0,
+                    createOrderSkippedAlreadySynced: 0,
+                    createOrderSkippedFailed: 0,
                     cancelOrderTotal: shopifyOrderList.filter(x => x.is_cancelled).length,
                     cancelOrderSuccess: 0,
                     cancelOrderError: 0,
                     cancelOrderSkippedTotal: 0,
                     cancelOrderSkippedAlreadySynced: 0,
-                    cancelOrderSkippedFailed: 0
+                    cancelOrderSkippedFailed: 0,
+                    cancelOrderSkippedNotFound: 0
                 }
             });
 
-            if (craeteOrderResults.failedOrders.length) {
-                for (const failedOrder of craeteOrderResults.failedOrders) {
-                    await FailedOrder.create({
-                        shopifyOrderId: failedOrder.ecommerceId,
-                        tenant: this.tenant.id,
-                        traceId: this.traceId,
-                        syncBatchId: orderSyncBatch.id,
-                        reason: failedOrder.reason,
-                        process: failedOrder.process
-                    });
-                }
+            // Separate create and cancel orders
+            const createOrders = shopifyOrderList.filter(x => !x.is_cancelled);
+            const cancelOrders = shopifyOrderList.filter(x => x.is_cancelled);
+
+            // Add create order jobs to queue with batchId (only if not already in queue)
+            if (createOrders.length > 0) {
+                const added = await this.syncQueue.addOrderBatch(this.tenant, createOrders, 'create', orderSyncBatch.id);
+                const addedCount = Array.isArray(added) ? added.filter(j => j !== null).length : (added ? 1 : 0);
+                this.logger.info(`Added ${addedCount}/${createOrders.length} create order jobs to queue (${createOrders.length - addedCount} already in queue)`);
             }
 
-            if (craeteOrderResults.successOrders.length) {
-                for (const successOrder of craeteOrderResults.successOrders) {
-
-                    orderMetadataMapping.push({
-                        ecommerceId: successOrder.ecommerceId.split('.')[1],
-                        erpId: successOrder.erpId
-                    });
-
-                    await SuccessOrder.create({
-                        tenant: this.tenant.id,
-                        traceId: this.traceId,
-                        syncBatchId: orderSyncBatch.id,
-                        shopifyOrderId: successOrder.ecommerceId,
-                        nebimOrderId: successOrder.erpId,
-                        lines: successOrder.lines,
-                        partiallyCancelledLines: successOrder.partiallyCancelledLines,
-                        isCancelled: successOrder.isCancelled,
-                        isPartiallyCancelled: successOrder.isPartiallyCancelled,
-                    });
-                }
+            // Add cancel order jobs to queue with batchId (only if not already in queue)
+            if (cancelOrders.length > 0) {
+                const added = await this.syncQueue.addOrderBatch(this.tenant, cancelOrders, 'cancel', orderSyncBatch.id);
+                const addedCount = Array.isArray(added) ? added.filter(j => j !== null).length : (added ? 1 : 0);
+                this.logger.info(`Added ${addedCount}/${cancelOrders.length} cancel order jobs to queue (${cancelOrders.length - addedCount} already in queue)`);
             }
 
-            if (orderMetadataMapping.length) { //TODO: there is 2 for loop for craeteOrderResults.successOrders merge them
-                await shopifyOrderBusiness.updateErpMetadataForOrders(orderMetadataMapping);
-            } //TODO: handle errors happened and updateErpMetadataForOrders 
-
-            const cancelOrders = await nebimOrderBusiness.cancelOrders(shopifyOrderList);
-
-            if (cancelOrders.failedOrders.length) {
-                for (const failedOrder of cancelOrders.failedOrders) {
-                    await FailedOrder.create({
-                        shopifyOrderId: failedOrder.ecommerceId,
-                        tenant: this.tenant.id,
-                        traceId: this.traceId,
-                        syncBatchId: orderSyncBatch.id,
-                        reason: failedOrder.reason,
-                        process: failedOrder.process,
-                        isCancelled: true
-                    });
-                }
-            }
-
-            if (cancelOrders.successOrders.length) {
-                for (const successOrder of cancelOrders.successOrders) {
-                    await SuccessOrder.create({
-                        tenant: this.tenant.id,
-                        traceId: this.traceId,
-                        syncBatchId: orderSyncBatch.id,
-                        shopifyOrderId: successOrder.ecommerceId,
-                        nebimOrderId: successOrder.erpId,
-                        lines: successOrder.lines,
-                        isCancelled: successOrder.isCancelled,
-                    });
-                }
-            }
-
-            await OrderSyncBatch.updateOne(
-                { id: orderSyncBatch.id },
-                {
-                    numbers: {
-                        ...orderSyncBatch.numbers,
-                        cancelOrderSuccess: cancelOrders.successOrders.length,
-                        cancelOrderError: cancelOrders.failedOrders.length,
-                        cancelOrderSkippedTotal: cancelOrders.skippedAlreadySyncedOrders + cancelOrders.skippedFailedOrderCount + cancelOrders.skippedNotSyncedCancelOrders,
-                        cancelOrderSkippedAlreadySynced: cancelOrders.skippedAlreadySyncedOrders,
-                        cancelOrderSkippedFailed: cancelOrders.skippedFailedOrderCount,
-                        cancelOrderSkippedNotFound: cancelOrders.skippedNotSyncedCancelOrders
-                    }
-                }
-            );
+            // Jobs will be processed by workers asynchronously
+            // Batch will be updated by BatchTracker as jobs complete
         } catch (error) {
             const syncError = new Error(`Error syncing Shopify to Nebim for ${startDate} to ${endDate}`);
             if (error instanceof Error) {

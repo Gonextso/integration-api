@@ -321,6 +321,84 @@ export default class NebimOrderBusiness extends CoreClass {
         return this.api.post(NebimObjectHelper.toNebimCancelOrder(this.tenant, order, createdOrder), { "IdemPotent-Key": `cancel-${order.order_id}` });
     }
 
+    /**
+     * Create a single order (for queue processing)
+     */
+    createSingleOrder = async (order) => {
+        const transaction = `${CacheFields.SYSTEM.SYNC_ORDER_LOCK}:${order.order_id}`;
+        let customer = {};
+
+        try {
+            customer = await this.customerBusiness.syncCustomerFromOrder(order);
+        } catch (error) {
+            this.logger.error(new Error(`Error syncing customer for order ${order.order_id}: ${error.message}`));
+            return {
+                ok: false,
+                reason: error.message,
+                ecommerceId: order.order_id,
+                process: SystemCodes.PROCESS.SYNC_CUSTOMER
+            };
+        }
+
+        try {
+            const orderResponse = await this.#createOrder(order, customer);
+            const orderNumber = orderResponse.OrderNumber;
+
+            return {
+                ok: true,
+                erpId: orderNumber,
+                ecommerceId: order.order_id,
+                lines: orderResponse.Lines.map(x => ({ 
+                    erpLineId: x.LineID, 
+                    quantity: x.Qty1, 
+                    barcode: x.UsedBarcode, 
+                    amount: x.LineAmount 
+                })),
+                partiallyCancelledLines: order.lines.filter(x => x.remaining_quantity).map(x => ({ 
+                    barcode: x.barcode, 
+                    quantity: x.remaining_quantity 
+                })),
+                isCancelled: false,
+                isPartiallyCancelled: order.lines.some(x => x.remaining_quantity)
+            };
+        } catch (error) {
+            this.logger.error(new Error(`Error creating order ${order.order_id}: ${error.message}`));
+            return {
+                ok: false,
+                reason: error.message,
+                ecommerceId: order.order_id,
+                process: SystemCodes.PROCESS.SYNC_ORDERS
+            };
+        }
+    }
+
+    /**
+     * Cancel a single order (for queue processing)
+     */
+    cancelSingleOrder = async (order, createdOrder) => {
+        const transaction = `${CacheFields.SYSTEM.SYNC_CANCEL_ORDER_LOCK}:${order.order_id}`;
+
+        try {
+            const cancelOrderResponse = await this.#cancelOrder(order, createdOrder);
+            const orderNumber = cancelOrderResponse.OrderNumber;
+
+            return {
+                ok: true,
+                erpId: orderNumber,
+                ecommerceId: order.order_id,
+                isCancelled: true
+            };
+        } catch (error) {
+            this.logger.error(new Error(`Error cancelling order ${order.order_id}: ${error.message}`));
+            return {
+                ok: false,
+                reason: error.message,
+                ecommerceId: order.order_id,
+                process: SystemCodes.PROCESS.SYNC_CANCEL_ORDERS
+            };
+        }
+    }
+
     getOrderStatus = async (startDate) => {
         return NebimObjectHelper.getOrderStatusList(await this.api.runProc(this.tenant.nebim.procNames.order.status, { "Date": startDate }));
     }
