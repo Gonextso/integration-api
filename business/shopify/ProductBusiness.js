@@ -9,6 +9,8 @@ import LimitBusiness from "../LimitBusiness.js";
 import Tenant from "../../models/db/postgres/Tenant.js";
 import SystemCodes from "../../enums/SystemCodes.js";
 import SystemHelper from "../../helpers/SystemHelper.js";
+import SystemCache from "../../cache/SystemCache.js";
+import CacheFields from "../../enums/CacheFields.js";
 
 export default class ShopifyProductBusiness extends CoreClass {
     constructor(tenant) {
@@ -41,7 +43,7 @@ export default class ShopifyProductBusiness extends CoreClass {
                 }
             }
 
-            if (this.tenant.shopify.billing.planKey !== SystemCodes.BILLING_PLANS.ENTERPRISE.KEY) {
+            if (this.tenant.shopify.billing.planKey !== SystemCodes.BILLING_PLANS.ENTERPRISE.KEY && this.tenant.shopify.billing.planKey !== SystemCodes.BILLING_PLANS.PRO.KEY) {
                 const limitBusiness = new LimitBusiness(await Tenant.findById(this.tenant.id));
                 let isProductAlreadySynced = syncedBarcodeDocs.length > 0;
                 let isLimitAvailable = true;
@@ -133,7 +135,16 @@ export default class ShopifyProductBusiness extends CoreClass {
                     }
                 };
 
-                const data = await this.api.query(mutation, variables);
+                let data = await this.api.query(mutation, variables);
+
+                // Check if product doesn't exist and retry without ID
+                if (data?.data?.productSet?.userErrors?.some(error => error.message === "Product does not exist")) {
+                    this.logger.warn2(`Product ${existingProductId} does not exist in Shopify, retrying without ID to create new product`);
+                    // Remove ID and retry
+                    delete variables.productSet.id;
+                    existingProductId = null;
+                    data = await this.api.query(mutation, variables);
+                }
 
                 if (!data || data.errors || data.userErrors || (data.data.productSet.userErrors && data.data.productSet.userErrors.length > 0)) {
                     this.logger.error('GraphQL Errors:', JSON.stringify(data.errors || data.data.productSet.userErrors));
@@ -172,23 +183,50 @@ export default class ShopifyProductBusiness extends CoreClass {
                     );
                 }
 
-                if (this.tenant.shopify.billing.planKey !== SystemCodes.BILLING_PLANS.ENTERPRISE.KEY && !isProductAlreadySynced)
+                if (this.tenant.shopify.billing.planKey !== SystemCodes.BILLING_PLANS.ENTERPRISE.KEY && this.tenant.shopify.billing.planKey !== SystemCodes.BILLING_PLANS.PRO.KEY && !isProductAlreadySynced)
                     await limitBusiness.useLimit(SystemCodes.LIMIT_TYPE.PRODUCT_DETAILS, product.variants.length);
-            } else {
+            } else if (this.tenant.shopify.billing.planKey === SystemCodes.BILLING_PLANS.ENTERPRISE.KEY || this.tenant.shopify.billing.planKey === SystemCodes.BILLING_PLANS.PRO.KEY) {
                 promises.push(async () => {
                     this.logger.info4(`Syncing product ${product.erp_id} in parallel`);
-                    let localExistingProductId = existingProductId;
+                    
+                    const systemCache = new SystemCache(this.tenant);
+                    const localBarcodes = product.variants.map(x => x.barcode).filter(Boolean);
+                    let lockKeys = null;
 
-                    for (const variant of product.variants) {
-                        productColorOp.add(variant.color);
-                        productSizeOp.add(variant.dimention);
-                    };
+                    try {
+                        // Acquire locks for all barcodes to prevent race conditions
+                        lockKeys = await this.#acquireBarcodeLocks(localBarcodes, systemCache);
+                        
+                        if (!lockKeys) {
+                            this.logger.warn2(`Could not acquire locks for product ${product.erp_id} barcodes, skipping`);
+                            return;
+                        }
 
-                    const category = categoryList.length ? categoryList.filter(x => x.erpKey === product.category)[0] ?? {} : {};
+                        // Re-check SyncedBarcode inside promise to avoid race conditions in parallel execution
+                        const localSyncedBarcodeDocs = localBarcodes.length ? await SyncedBarcode.find({
+                            barcode: { $in: localBarcodes },
+                            tenant: this.tenant.id
+                        }) : [];
+                        const localSyncedBarcodeMap = new Map();
+                        let localExistingProductId = null;
 
-                    const variables = {
-                        synchronous: true,
-                        productSet: {
+                        for (const doc of localSyncedBarcodeDocs) {
+                            localSyncedBarcodeMap.set(doc.barcode, doc);
+                            if (!localExistingProductId && doc.productId) {
+                                localExistingProductId = doc.productId;
+                            }
+                        }
+
+                        for (const variant of product.variants) {
+                            productColorOp.add(variant.color);
+                            productSizeOp.add(variant.dimention);
+                        };
+
+                        const category = categoryList.length ? categoryList.filter(x => x.erpKey === product.category)[0] ?? {} : {};
+
+                        const variables = {
+                            synchronous: true,
+                            productSet: {
                             ...(localExistingProductId ? { id: localExistingProductId } : {}),
                             status: "DRAFT",
                             title: product.title,
@@ -206,7 +244,7 @@ export default class ShopifyProductBusiness extends CoreClass {
                                 } : null
                             ].filter(Boolean),
                             variants: product.variants.map(x => {
-                                const existingSync = syncedBarcodeMap.get(x.barcode);
+                                const existingSync = localSyncedBarcodeMap.get(x.barcode);
                                 const variantInput = {
                                     optionValues: [
                                         x.color ? {
@@ -241,46 +279,66 @@ export default class ShopifyProductBusiness extends CoreClass {
                                 type: 'single_line_text_field'
                             })
                         }
-                    };
+                        };
 
-                    const data = await this.api.query(mutation, variables);
+                        let data = await this.api.query(mutation, variables);
 
-                    if (data.errors || data.userErrors || (data.data.productSet.userErrors && data.data.productSet.userErrors.length > 0)) {
-                        this.logger.error('GraphQL Errors:', JSON.stringify(data.errors || data.data.productSet.userErrors));
-                        return;
-                    }
+                        // Check if product doesn't exist and retry without ID
+                        if (data?.data?.productSet?.userErrors?.some(error => error.message === "Product does not exist")) {
+                            this.logger.warn2(`Product ${localExistingProductId} does not exist in Shopify, retrying without ID to create new product`);
+                            // Remove ID and retry
+                            delete variables.productSet.id;
+                            localExistingProductId = null;
+                            data = await this.api.query(mutation, variables);
+                        }
 
-                    const shopifyProduct = data.data.productSet?.product ?? {};
-                    const variantNodes = shopifyProduct.variants?.nodes ?? [];
+                        if (data.errors || data.userErrors || (data.data.productSet.userErrors && data.data.productSet.userErrors.length > 0)) {
+                            this.logger.error('GraphQL Errors:', JSON.stringify(data.errors || data.data.productSet.userErrors));
+                            return;
+                        }
 
-                    for (const attr of product.attributes
-                        .concat({ id: "ItemCode" })) {
-                        metafields.add(`gonextso_nebim_app.${slug(attr.id)}`);
-                    }
+                        const shopifyProduct = data.data.productSet?.product ?? {};
+                        const variantNodes = shopifyProduct.variants?.nodes ?? [];
 
-                    if (this.tenant.shopify.isInventoryTracking) this.#setProductVariantsToTracked(data.data.productSet.product);
+                        for (const attr of product.attributes
+                            .concat({ id: "ItemCode" })) {
+                            metafields.add(`gonextso_nebim_app.${slug(attr.id)}`);
+                        }
 
-                    for (let index = 0; index < product.variants.length; index++) {
-                        const variant = product.variants[index];
-                        const existingSync = syncedBarcodeMap.get(variant.barcode);
-                        const variantNode = variantNodes[index] ?? {};
-                        const res = await SyncedBarcode.updateOne(
-                            {
-                                barcode: variant.barcode,
-                                tenant: this.tenant.id
-                            },
-                            {
-                                barcode: variant.barcode,
-                                tenant: this.tenant.id,
-                                productId: shopifyProduct.id ?? existingSync?.productId ?? null,
-                                variantId: variantNode.id ?? existingSync?.variantId ?? null
-                            },
-                            { upsert: true }
-                        );
+                        if (this.tenant.shopify.isInventoryTracking) this.#setProductVariantsToTracked(data.data.productSet.product);
 
-                        if (res.upsertedCount) {
-                            const limitBusiness = new LimitBusiness(await Tenant.findById(this.tenant.id));
-                            await limitBusiness.useLimit(SystemCodes.LIMIT_TYPE.PRODUCT_DETAILS, 1);
+                        // Update localExistingProductId if product was just created
+                        if (!localExistingProductId && shopifyProduct.id) {
+                            localExistingProductId = shopifyProduct.id;
+                        }
+
+                        for (let index = 0; index < product.variants.length; index++) {
+                            const variant = product.variants[index];
+                            const existingSync = localSyncedBarcodeMap.get(variant.barcode);
+                            const variantNode = variantNodes[index] ?? {};
+                            const res = await SyncedBarcode.updateOne(
+                                {
+                                    barcode: variant.barcode,
+                                    tenant: this.tenant.id
+                                },
+                                {
+                                    barcode: variant.barcode,
+                                    tenant: this.tenant.id,
+                                    productId: shopifyProduct.id ?? localExistingProductId ?? existingSync?.productId ?? null,
+                                    variantId: variantNode.id ?? existingSync?.variantId ?? null
+                                },
+                                { upsert: true }
+                            );
+
+                            if (res.upsertedCount) {
+                                const limitBusiness = new LimitBusiness(await Tenant.findById(this.tenant.id));
+                                await limitBusiness.useLimit(SystemCodes.LIMIT_TYPE.PRODUCT_DETAILS, 1);
+                            }
+                        }
+                    } finally {
+                        // Always release locks, even if error occurred
+                        if (lockKeys) {
+                            await this.#releaseBarcodeLocks(lockKeys, systemCache);
                         }
                     }
                 });
@@ -380,6 +438,47 @@ export default class ShopifyProductBusiness extends CoreClass {
 
         if (!data || data.errors) {
             this.logger.error('GraphQL Errors:', JSON.stringify(data?.errors || data));
+        }
+    }
+
+    #acquireBarcodeLocks = async (barcodes, systemCache) => {
+        if (!barcodes || barcodes.length === 0) {
+            return [];
+        }
+
+        // Sort barcodes alphabetically to prevent deadlocks
+        const sortedBarcodes = [...barcodes].sort();
+        const lockKeys = [];
+        const LOCK_TIMEOUT = 60; // 60 seconds timeout
+
+        for (const barcode of sortedBarcodes) {
+            const lockKey = `${CacheFields.SYSTEM.PRODUCT_SYNC_BARCODE_LOCK}:${barcode}`;
+            const lockAcquired = await systemCache.lockWithTimeout(lockKey, LOCK_TIMEOUT);
+            
+            if (!lockAcquired) {
+                // Release all previously acquired locks
+                await this.#releaseBarcodeLocks(lockKeys, systemCache);
+                return null;
+            }
+            
+            lockKeys.push(lockKey);
+        }
+
+        return lockKeys;
+    }
+
+    #releaseBarcodeLocks = async (lockKeys, systemCache) => {
+        if (!lockKeys || lockKeys.length === 0) {
+            return;
+        }
+
+        // Release locks in reverse order
+        for (let i = lockKeys.length - 1; i >= 0; i--) {
+            try {
+                await systemCache.unlock(lockKeys[i]);
+            } catch (error) {
+                this.logger.error(`Error releasing lock ${lockKeys[i]}:`, error);
+            }
         }
     }
 }

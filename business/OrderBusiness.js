@@ -431,8 +431,23 @@ export default class OrderBusiness extends CoreClass {
             const nebimOrderBusiness = new NebimOrderBusiness(this.tenant);
 
             const orderStatusList = await nebimOrderBusiness.getOrderStatus(startDate);
+            
+            const orderStatusCount = orderStatusList ? Object.keys(orderStatusList).length : 0;
+            this.logger.info(`Sync order status: Found ${orderStatusCount} orders with status from Nebim for ${startDate}`);
 
-            await shopifyOrderBusiness.updateOrderFullfillmentStatus(orderStatusList)
+            if (orderStatusCount === 0) {
+                this.logger.info(`Sync order status: No orders found from Nebim, skipping Shopify update`);
+                return;
+            }
+
+            const updateResults = await shopifyOrderBusiness.updateOrderFullfillmentStatus(orderStatusList);
+            
+            // Log summary statistics
+            const totalProcessed = updateResults.length;
+            const successful = updateResults.filter(r => r.success).length;
+            const failed = updateResults.filter(r => !r.success).length;
+            
+            this.logger.info(`Sync order status summary for ${startDate}: Total processed: ${totalProcessed}, Successful: ${successful}, Failed: ${failed}`);
         } catch (error) {
             const syncError = new Error(`Error syncing order status for ${startDate}`);
             if (error instanceof Error) {

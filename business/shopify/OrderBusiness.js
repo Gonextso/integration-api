@@ -195,30 +195,51 @@ export default class ShopifyOrderBusiness extends CoreClass {
     //TODO: use it on order status shipped
     updateOrderFullfillmentStatus = async (orders = {}) => {
         if (!orders || Object.keys(orders).length === 0) {
+            this.logger.info(`Update order fulfillment status: No orders provided`);
             return [];
         }
 
+        const totalOrdersFromNebim = Object.keys(orders).length;
+        this.logger.info(`Update order fulfillment status: Processing ${totalOrdersFromNebim} orders from Nebim`);
+
         const results = [];
+        let matchedSuccessOrderCount = 0;
+        let notMatchedSuccessOrderCount = 0;
+        let fulfillmentOrdersFoundCount = 0;
+        let fulfillmentOrdersNotFoundCount = 0;
+        let fulfillmentCreatedCount = 0;
+        let fulfillmentFailedCount = 0;
 
         for (const order of Object.values(orders)) {
             try {
                 const successOrder = await SuccessOrder.findOne({ erpId: order.erpId, tenant: this.tenant._id });
                 if (!successOrder) {
+                    notMatchedSuccessOrderCount++;
+                    this.logger.info(`Update order fulfillment status: No synced success order found for ERP ID ${order.erpId} (Shopify Order: ${order.ecommerceId})`);
                     results.push({ success: false, orderId: order.ecommerceId, error: 'No synced success order found for this order.' });
                     continue;
                 }
 
+                matchedSuccessOrderCount++;
+                this.logger.info(`Update order fulfillment status: Success order matched for ERP ID ${order.erpId} (Shopify Order: ${order.ecommerceId})`);
+
                 const fulfillmentOrdersResp = await this.api.query(orderQueries.fulfillmentOrdersByOrderId, { orderId: order.ecommerceId.split('.')[1].toLowerCase().replace('gid://shopify/order/', 'gid://shopify/Order/') });
                 if (fulfillmentOrdersResp.errors) {
                     this.logger.error(new Error(`GraphQL Errors when fetching fulfillment orders: ${JSON.stringify(fulfillmentOrdersResp.errors)}`));
+                    fulfillmentOrdersNotFoundCount++;
                     results.push({ success: false, orderId: order.ecommerceId, error: fulfillmentOrdersResp.errors[0]?.message || 'Unknown error' });
                     continue;
                 }
                 const fulfillmentOrders = fulfillmentOrdersResp.data?.order?.fulfillmentOrders?.nodes || [];
                 if (fulfillmentOrders.length === 0) {
+                    fulfillmentOrdersNotFoundCount++;
+                    this.logger.info(`Update order fulfillment status: No fulfillment orders found in Shopify for order ${order.ecommerceId}`);
                     results.push({ success: false, orderId: order.ecommerceId, error: 'No fulfillment orders found for this order.' });
                     continue;
                 }
+
+                fulfillmentOrdersFoundCount++;
+                this.logger.info(`Update order fulfillment status: Found ${fulfillmentOrders.length} fulfillment order(s) in Shopify for order ${order.ecommerceId}`);
 
                 const fulfillmentOrder = fulfillmentOrders[0];
 
@@ -230,6 +251,9 @@ export default class ShopifyOrderBusiness extends CoreClass {
                         quantity: order.tracking[x].lines.reduce((sum, line) => sum + (line.shippedQuantity || 0), 0)
                     }))
                 }));
+
+                const trackingNumbersCount = lineItemsByFulfillmentOrder.length;
+                this.logger.info(`Update order fulfillment status: Processing ${trackingNumbersCount} tracking number(s) for order ${order.ecommerceId}`);
 
                 for (const info of lineItemsByFulfillmentOrder) {
                     const trackingInfo = {
@@ -250,24 +274,34 @@ export default class ShopifyOrderBusiness extends CoreClass {
 
                     const mutationResp = await this.api.query(orderMutations.fulfillmentCreate, { fulfillment });
                     if (mutationResp.errors) {
+                        fulfillmentFailedCount++;
                         this.logger.error(new Error(`GraphQL Errors when creating fulfillment: ${JSON.stringify(mutationResp.errors)}`));
                         results.push({ success: false, orderId: order.ecommerceId, error: mutationResp.errors[0]?.message || 'Unknown error' });
                         continue;
                     }
                     const userErrors = mutationResp.data?.fulfillmentCreate?.userErrors;
                     if (userErrors && userErrors.length > 0) {
+                        fulfillmentFailedCount++;
                         this.logger.error(new Error(`User errors when creating fulfillment: ${JSON.stringify(userErrors)}`));
                         results.push({ success: false, orderId: order.ecommerceId, error: userErrors[0]?.message || 'Unknown error' });
                         continue;
                     }
 
+                    fulfillmentCreatedCount++;
+                    this.logger.info(`Update order fulfillment status: Successfully created fulfillment for order ${order.ecommerceId} with tracking ${trackingInfo.number}`);
                     results.push({ success: true, orderId: order.ecommerceId, fulfillment: mutationResp.data?.fulfillmentCreate?.fulfillment });
                 }
             } catch (error) {
+                fulfillmentFailedCount++;
                 this.logger.error(new Error(`Error updating fulfillment for order: ${order.ecommerceId}`, error));
                 results.push({ success: false, orderId: order.ecommerceId, error: error.message });
             }
         }
+
+        // Log summary statistics
+        this.logger.info(`Update order fulfillment status summary: Total from Nebim: ${totalOrdersFromNebim}, Matched with SuccessOrder: ${matchedSuccessOrderCount}, Not matched: ${notMatchedSuccessOrderCount}`);
+        this.logger.info(`Update order fulfillment status summary: Fulfillment orders found in Shopify: ${fulfillmentOrdersFoundCount}, Not found: ${fulfillmentOrdersNotFoundCount}`);
+        this.logger.info(`Update order fulfillment status summary: Fulfillments created: ${fulfillmentCreatedCount}, Failed: ${fulfillmentFailedCount}`);
 
         return results;
     }
