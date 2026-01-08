@@ -36,7 +36,7 @@ export default class NebimOrderBusiness extends CoreClass {
         let skippedFailedOrderCount = 0, skippedAlreadySyncedOrders = 0;
         let successOrders = [], failedOrders = [];
 
-        if (this.tenant.shopify.billing.planKey === SystemCodes.BILLING_PLANS.ENTERPRISE.KEY) {
+        if (this.tenant.shopify.billing.planKey === SystemCodes.BILLING_PLANS.ENTERPRISE.KEY || this.tenant.shopify.billing.planKey === SystemCodes.BILLING_PLANS.PRO.KEY) {
             for (const order of orderList.filter(x => !x.is_cancelled)) {
                 const isFailedOrderExists = Boolean(await FailedOrder.findOne({ tenant: this.tenant.id, shopifyOrderId: order.order_id, isCancelled: false }));
 

@@ -39,6 +39,12 @@ export default class RedisAPI extends CoreAPI {
         return isLocked === 'OK';
     }
 
+    lockWithTimeout = async (key, timeoutSeconds) => {
+        const isLocked = await this.client.set(key, '1', { NX: true, EX: timeoutSeconds });
+        
+        return isLocked === 'OK';
+    }
+
     unlock = async key => {
         await this.client.del(key);
     }

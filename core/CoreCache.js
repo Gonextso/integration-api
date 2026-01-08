@@ -48,6 +48,10 @@ export default class CoreCache extends CoreClass {
         return this.redis.lock(`${this.tenant.name}:${transactionId}`);
     }
 
+    lockWithTimeout = async (transactionId, timeoutSeconds) => {
+        return this.redis.lockWithTimeout(`${this.tenant.name}:${transactionId}`, timeoutSeconds);
+    }
+
     unlock = async (transactionId) => {
         await this.redis.unlock(`${this.tenant.name}:${transactionId}`);
     }
