@@ -37,6 +37,8 @@ export default class NebimOrderBusiness extends CoreClass {
         let successOrders = [], failedOrders = [];
 
         if (this.tenant.shopify.billing.planKey === SystemCodes.BILLING_PLANS.ENTERPRISE.KEY || this.tenant.shopify.billing.planKey === SystemCodes.BILLING_PLANS.PRO.KEY) {
+            // PRO and ENTERPRISE plans use parallel execution
+            // PRO plan has limit checks, ENTERPRISE skips limit checks
             for (const order of orderList.filter(x => !x.is_cancelled)) {
                 const isFailedOrderExists = Boolean(await FailedOrder.findOne({ tenant: this.tenant.id, shopifyOrderId: order.order_id, isCancelled: false }));
 
@@ -60,6 +62,20 @@ export default class NebimOrderBusiness extends CoreClass {
                 promises.push(SystemHelper.createTransaction(this.tenant, transaction, async () => {
                     const limitBusiness = new LimitBusiness(await Tenant.findById(this.tenant.id));
                     let orderNumber = "";
+
+                    // Check limit availability for PRO plan (ENTERPRISE skips limit check)
+                    if (this.tenant.shopify.billing.planKey === SystemCodes.BILLING_PLANS.PRO.KEY) {
+                        try {
+                            await limitBusiness.checkLimitAvailability(SystemCodes.LIMIT_TYPE.ORDER, 1);
+                        } catch (error) {
+                            return {
+                                ok: false,
+                                reason: error.message,
+                                ecommerceId: order.order_id,
+                                process: SystemCodes.PROCESS.TOKEN_CHECK,
+                            }
+                        }
+                    }
 
                     try {
                         customer = await this.customerBusiness.syncCustomerFromOrder(order);
