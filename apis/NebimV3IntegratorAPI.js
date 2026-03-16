@@ -32,9 +32,13 @@ export default class NebimV3IntegratorAPI extends CoreAPI {
         }
 
         let accessToken = response.data["Token"];
+        let sessionId = response.data["SessionID"];
         const now = new Date();
 
-        if (!accessToken) this.throws("Something went wrong while connecting Nebim V3 Integrator");
+        if (!accessToken) {
+            if (sessionId) this.throws(`Nebim V3 Entegratör IIS ayarlarında "Oturum Durumu -> Etkinleştirilmedi" olmalıdır.`, true);
+            else this.throws(`Something went wrong while connecting Nebim V3 Integrator`);
+        }
 
         await this.cache.set("Token", { token: accessToken, expiryDate: new Date(now.getTime() + 24 * 60 * 60 * 1000) });
 
