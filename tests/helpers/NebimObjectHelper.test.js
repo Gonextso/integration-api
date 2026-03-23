@@ -160,7 +160,7 @@ describe('NebimObjectHelper', () => {
 
       const result = NebimObjectHelper.getDetailList(detailList, priceList, mockTenant);
 
-      expect(result[0].is_blocked_by_erp).toBe(true);
+      expect(result[0].variants[0].is_blocked_by_erp).toBe(true);
     });
 
     it('should set is_blocked_by_erp when IsBlocked is true', () => {
@@ -183,7 +183,7 @@ describe('NebimObjectHelper', () => {
 
       const result = NebimObjectHelper.getDetailList(detailList, priceList, mockTenant);
 
-      expect(result[0].is_blocked_by_erp).toBe(true);
+      expect(result[0].variants[0].is_blocked_by_erp).toBe(true);
     });
   });
 

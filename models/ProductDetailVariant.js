@@ -9,6 +9,7 @@ export default class ProductDetailVariant extends CoreModel {
             base_price: 0,
             sale_price: 0,
             currency: "",
+            is_blocked_by_erp: false,
             ...fields
         });
     }

@@ -1,7 +1,7 @@
 export default {
-    definitions: `
-        query {
-            metafieldDefinitions(ownerType: PRODUCT, first: 250) {
+    definitionsByOwnerType: `
+        query metafieldDefinitions($ownerType: MetafieldOwnerType!) {
+            metafieldDefinitions(ownerType: $ownerType, first: 250) {
                 edges {
                     node {
                         id
