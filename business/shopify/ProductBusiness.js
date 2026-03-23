@@ -22,6 +22,8 @@ export default class ShopifyProductBusiness extends CoreClass {
     syncProductsDetailBulk = async (detailList, categoryList = []) => {
         const mutation = productMutations.sync;
         const metafields = new Set();
+        const variantMetafields = new Set();
+        const variantBlockedMetafieldKey = "gonextso_nebim_app.is_blocked_by_erp";
         let promises = [];
         const slug = text => text.replace(/ /g, "-").toLowerCase();
 
@@ -112,9 +114,16 @@ export default class ShopifyProductBusiness extends CoreClass {
                                 ].filter(Boolean),
                                 price: x.sale_price,
                                 barcode: x.barcode,
-                                sku: x.sku
+                                sku: x.sku,
+                                metafields: [{
+                                    namespace: "gonextso_nebim_app",
+                                    key: "is_blocked_by_erp",
+                                    value: String(Boolean(x.is_blocked_by_erp)),
+                                    type: "boolean"
+                                }]
                             };
 
+                            variantMetafields.add(variantBlockedMetafieldKey);
                             if (existingSync?.variantId) {
                                 variantInput.id = existingSync.variantId;
                             }
@@ -146,8 +155,8 @@ export default class ShopifyProductBusiness extends CoreClass {
                     data = await this.api.query(mutation, variables);
                 }
 
-                if (!data || data.errors || data.userErrors || (data.data.productSet.userErrors && data.data.productSet.userErrors.length > 0)) {
-                    this.logger.error('GraphQL Errors:', JSON.stringify(data.errors || data.data.productSet.userErrors));
+                if (!data || data.errors || data.userErrors || (data.data?.productSet?.userErrors && data.data.productSet.userErrors.length > 0)) {
+                    this.logger.error('GraphQL Errors:', JSON.stringify(data?.errors || data?.data?.productSet?.userErrors || data));
                     continue;
                 }
 
@@ -271,9 +280,16 @@ export default class ShopifyProductBusiness extends CoreClass {
                                     ].filter(Boolean),
                                     price: x.sale_price,
                                     barcode: x.barcode,
-                                    sku: x.sku
+                                    sku: x.sku,
+                                    metafields: [{
+                                        namespace: "gonextso_nebim_app",
+                                        key: "is_blocked_by_erp",
+                                        value: String(Boolean(x.is_blocked_by_erp)),
+                                        type: "boolean"
+                                    }]
                                 };
 
+                                variantMetafields.add(variantBlockedMetafieldKey);
                                 if (existingSync?.variantId) {
                                     variantInput.id = existingSync.variantId;
                                 }
@@ -305,8 +321,8 @@ export default class ShopifyProductBusiness extends CoreClass {
                             data = await this.api.query(mutation, variables);
                         }
 
-                        if (data.errors || data.userErrors || (data.data.productSet.userErrors && data.data.productSet.userErrors.length > 0)) {
-                            this.logger.error('GraphQL Errors:', JSON.stringify(data.errors || data.data.productSet.userErrors));
+                        if (data.errors || data.userErrors || (data.data?.productSet?.userErrors && data.data.productSet.userErrors.length > 0)) {
+                            this.logger.error('GraphQL Errors:', JSON.stringify(data?.errors || data?.data?.productSet?.userErrors || data));
                             return;
                         }
 
@@ -384,13 +400,16 @@ export default class ShopifyProductBusiness extends CoreClass {
             }
         }
 
-        await this.#setMetafieldDefinitions(metafields);
+        await this.#setMetafieldDefinitions(metafields, "PRODUCT");
+        await this.#setMetafieldDefinitions(variantMetafields, "PRODUCTVARIANT");
     }
 
-    #setMetafieldDefinitions = async (metafields) => {
+    #setMetafieldDefinitions = async (metafields, ownerType) => {
         if (!metafields || metafields.size === 0) return;
 
-        const existingData = await this.api.query(metafieldQueries.definitions);
+        const existingData = await this.api.query(metafieldQueries.definitionsByOwnerType, {
+            ownerType
+        });
 
         if (existingData.errors) {
             this.logger.error('GraphQL Errors when checking metafield definitions:', JSON.stringify(existingData.errors));
@@ -416,7 +435,7 @@ export default class ShopifyProductBusiness extends CoreClass {
                     key: key,
                     description: "Automatically created by Gonextso Nebim Integration App",
                     type: "single_line_text_field",
-                    ownerType: "PRODUCT",
+                    ownerType: ownerType,
                     access: { storefront: "PUBLIC_READ" },
                     pin: true
                 }
