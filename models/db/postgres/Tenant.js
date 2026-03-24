@@ -88,6 +88,7 @@ class TenantModel {
         upsert: {
           create: {
             isActive: true,
+            blockProductGenerationWhenOff: false,
             productCategoryKeysFrom: [],
             customerPhoneType: '7',
             customerAddressType: '1',
@@ -419,6 +420,7 @@ class TenantModel {
       userGroup: tenant.nebim?.userGroup || null,
       salesUrl: tenant.nebim?.salesUrl || null,
       isActive: tenant.nebim?.isActive ?? true,
+      blockProductGenerationWhenOff: tenant.nebim?.blockProductGenerationWhenOff ?? false,
       product: {
         categoryKeysFrom: tenant.nebim?.productCategoryKeysFrom || [],
       },

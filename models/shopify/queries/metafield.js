@@ -7,6 +7,9 @@ export default {
                         id
                         namespace
                         key
+                        type {
+                            name
+                        }
                     }
                 }
             }

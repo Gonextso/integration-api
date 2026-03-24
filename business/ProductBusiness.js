@@ -17,6 +17,7 @@ export default class ProductBusiness extends CoreClass {
             this.logger.info2(`Sync product details started from ${startDate}`);
     
             const detailList = await nebimProductBusiness.getProductDetailList(startDate);
+            console.log(`detailList length: ${detailList.length}`);
             
             shopifyProductBusiness.syncProductsDetailBulk(detailList);
         } catch (error) {
