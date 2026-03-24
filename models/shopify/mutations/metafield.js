@@ -20,5 +20,16 @@ export default {
                 }
             }
         }
+    `,
+    deleteDefinition: `
+        mutation metafieldDefinitionDelete($id: ID!, $deleteAllMetafields: Boolean!) {
+            metafieldDefinitionDelete(id: $id, deleteAllMetafields: $deleteAllMetafields) {
+                deletedDefinitionId
+                userErrors {
+                    field
+                    message
+                }
+            }
+        }
     `
 } 

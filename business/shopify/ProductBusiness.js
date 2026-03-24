@@ -45,12 +45,30 @@ export default class ShopifyProductBusiness extends CoreClass {
                 }
             }
 
+            const blockWhenOff = this.tenant?.nebim?.blockProductGenerationWhenOff === true
+                || this.tenant?.nebim?.blockProductGenerationWhenOff === "true";
+            const isFullyOffline = product.variants.length > 0
+                && product.variants.every(variant => Boolean(variant.is_blocked_by_erp));
+            const variantsForSync = [];
+            for (const variant of product.variants) {
+                const existingSync = syncedBarcodeMap.get(variant.barcode);
+                const shouldSkipVariant = blockWhenOff && variant.is_blocked_by_erp && !existingSync?.variantId;
+                if (!shouldSkipVariant) {
+                    variantsForSync.push(variant);
+                }
+            }
+
+            if (blockWhenOff && isFullyOffline && !existingProductId) {
+                this.logger.info2(`Skipping offline product creation for ${product.erp_id}`);
+                continue;
+            }
+
             if (this.tenant.shopify.billing.planKey !== SystemCodes.BILLING_PLANS.ENTERPRISE.KEY) {
                 const limitBusiness = new LimitBusiness(await Tenant.findById(this.tenant.id));
                 let isProductAlreadySynced = syncedBarcodeDocs.length > 0;
                 let isLimitAvailable = true;
 
-                for (const variant of product.variants) {
+                for (const variant of variantsForSync) {
                     try {
                         await limitBusiness.checkLimitAvailability(SystemCodes.LIMIT_TYPE.PRODUCT_DETAILS, 1);
                     } catch (error) {
@@ -99,7 +117,7 @@ export default class ShopifyProductBusiness extends CoreClass {
                                 values: [...productSizeOp].map(x => ({ name: x }))
                             } : null
                         ].filter(x => x),
-                        variants: product.variants.map(x => {
+                        variants: variantsForSync.map(x => {
                             const existingSync = syncedBarcodeMap.get(x.barcode);
                             const variantInput = {
                                 optionValues: [
@@ -148,6 +166,10 @@ export default class ShopifyProductBusiness extends CoreClass {
 
                 // Check if product doesn't exist and retry without ID
                 if (data?.data?.productSet?.userErrors?.some(error => error.message === "Product does not exist")) {
+                    if (blockWhenOff && isFullyOffline) {
+                        this.logger.warn2(`Offline product ${product.erp_id} not found in Shopify, skipping creation`);
+                        continue;
+                    }
                     this.logger.warn2(`Product ${existingProductId} does not exist in Shopify, retrying without ID to create new product`);
                     // Remove ID and retry
                     delete variables.productSet.id;
@@ -173,8 +195,8 @@ export default class ShopifyProductBusiness extends CoreClass {
 
                 if (this.tenant.shopify.isInventoryTracking) this.#setProductVariantsToTracked(data.data.productSet.product);
 
-                for (let index = 0; index < product.variants.length; index++) {
-                    const variant = product.variants[index];
+                for (let index = 0; index < variantsForSync.length; index++) {
+                    const variant = variantsForSync[index];
                     const existingSync = syncedBarcodeMap.get(variant.barcode);
                     const variantNode = variantNodes[index] ?? {};
                     await SyncedBarcode.updateOne(
@@ -193,7 +215,7 @@ export default class ShopifyProductBusiness extends CoreClass {
                 }
 
                 if (this.tenant.shopify.billing.planKey !== SystemCodes.BILLING_PLANS.ENTERPRISE.KEY && !isProductAlreadySynced)
-                    await limitBusiness.useLimit(SystemCodes.LIMIT_TYPE.PRODUCT_DETAILS, product.variants.length);
+                    await limitBusiness.useLimit(SystemCodes.LIMIT_TYPE.PRODUCT_DETAILS, variantsForSync.length);
             } else if (this.tenant.shopify.billing.planKey === SystemCodes.BILLING_PLANS.ENTERPRISE.KEY || this.tenant.shopify.billing.planKey === SystemCodes.BILLING_PLANS.PRO.KEY) {
                 promises.push(async () => {
                     this.logger.info4(`Syncing product ${product.erp_id} in parallel`);
@@ -226,10 +248,26 @@ export default class ShopifyProductBusiness extends CoreClass {
                             }
                         }
 
+                        const localIsFullyOffline = product.variants.length > 0
+                            && product.variants.every(variant => Boolean(variant.is_blocked_by_erp));
+                        const localVariantsForSync = [];
+                        for (const variant of product.variants) {
+                            const existingSync = localSyncedBarcodeMap.get(variant.barcode);
+                            const shouldSkipVariant = blockWhenOff && variant.is_blocked_by_erp && !existingSync?.variantId;
+                            if (!shouldSkipVariant) {
+                                localVariantsForSync.push(variant);
+                            }
+                        }
+
+                        if (blockWhenOff && localIsFullyOffline && !localExistingProductId) {
+                            this.logger.info2(`Skipping offline product creation for ${product.erp_id}`);
+                            return;
+                        }
+
                         // Check limit availability for PRO plan (ENTERPRISE skips limit check)
                         if (this.tenant.shopify.billing.planKey === SystemCodes.BILLING_PLANS.PRO.KEY) {
                             const limitBusiness = new LimitBusiness(await Tenant.findById(this.tenant.id));
-                            for (const variant of product.variants) {
+                            for (const variant of localVariantsForSync) {
                                 try {
                                     await limitBusiness.checkLimitAvailability(SystemCodes.LIMIT_TYPE.PRODUCT_DETAILS, 1);
                                 } catch (error) {
@@ -239,7 +277,7 @@ export default class ShopifyProductBusiness extends CoreClass {
                             }
                         }
 
-                        for (const variant of product.variants) {
+                        for (const variant of localVariantsForSync) {
                             productColorOp.add(variant.color);
                             productSizeOp.add(variant.dimention);
                         };
@@ -265,7 +303,7 @@ export default class ShopifyProductBusiness extends CoreClass {
                                     values: [...productSizeOp].map(x => ({ name: x }))
                                 } : null
                             ].filter(Boolean),
-                            variants: product.variants.map(x => {
+                            variants: localVariantsForSync.map(x => {
                                 const existingSync = localSyncedBarcodeMap.get(x.barcode);
                                 const variantInput = {
                                     optionValues: [
@@ -314,6 +352,10 @@ export default class ShopifyProductBusiness extends CoreClass {
 
                         // Check if product doesn't exist and retry without ID
                         if (data?.data?.productSet?.userErrors?.some(error => error.message === "Product does not exist")) {
+                            if (blockWhenOff && localIsFullyOffline) {
+                                this.logger.warn2(`Offline product ${product.erp_id} not found in Shopify, skipping creation`);
+                                return;
+                            }
                             this.logger.warn2(`Product ${localExistingProductId} does not exist in Shopify, retrying without ID to create new product`);
                             // Remove ID and retry
                             delete variables.productSet.id;
@@ -341,8 +383,8 @@ export default class ShopifyProductBusiness extends CoreClass {
                             localExistingProductId = shopifyProduct.id;
                         }
 
-                        for (let index = 0; index < product.variants.length; index++) {
-                            const variant = product.variants[index];
+                        for (let index = 0; index < localVariantsForSync.length; index++) {
+                            const variant = localVariantsForSync[index];
                             const existingSync = localSyncedBarcodeMap.get(variant.barcode);
                             const variantNode = variantNodes[index] ?? {};
                             await SyncedBarcode.updateOne(
@@ -416,17 +458,43 @@ export default class ShopifyProductBusiness extends CoreClass {
             return;
         }
 
-        const existingDefinitions = new Set();
+        const existingDefinitions = new Map();
         existingData.data.metafieldDefinitions.edges.forEach(edge => {
-            existingDefinitions.add(`${edge.node.namespace}.${edge.node.key}`);
+            existingDefinitions.set(`${edge.node.namespace}.${edge.node.key}`, {
+                id: edge.node.id,
+                typeName: edge.node.type?.name
+            });
         });
 
         for (const metafield of metafields) {
-            if (existingDefinitions.has(metafield)) {
-                continue;
-            }
-
             const [namespace, key] = metafield.split('.');
+            const expectedType = key === "is_blocked_by_erp" ? "boolean" : "single_line_text_field";
+            const existingDefinition = existingDefinitions.get(metafield);
+
+            if (existingDefinition) {
+                if (existingDefinition.typeName === expectedType) {
+                    continue;
+                }
+
+                if (key === "is_blocked_by_erp") {
+                    const deleteData = await this.api.query(metafieldMutations.deleteDefinition, {
+                        id: existingDefinition.id,
+                        deleteAllMetafields: true
+                    });
+
+                    if (deleteData?.errors || deleteData?.data?.metafieldDefinitionDelete?.userErrors?.length) {
+                        this.logger.error(
+                            'Failed to delete existing metafield definition:',
+                            JSON.stringify(deleteData?.errors || deleteData?.data?.metafieldDefinitionDelete?.userErrors || deleteData)
+                        );
+                        continue;
+                    }
+
+                    this.logger.info(`Deleted metafield definition to recreate as boolean: ${metafield}`);
+                } else {
+                    continue;
+                }
+            }
 
             const variables = {
                 definition: {
@@ -434,7 +502,7 @@ export default class ShopifyProductBusiness extends CoreClass {
                     namespace: namespace,
                     key: key,
                     description: "Automatically created by Gonextso Nebim Integration App",
-                    type: "single_line_text_field",
+                    type: expectedType,
                     ownerType: ownerType,
                     access: { storefront: "PUBLIC_READ" },
                     pin: true
