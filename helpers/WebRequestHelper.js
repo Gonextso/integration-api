@@ -12,10 +12,16 @@ export default class WebRequestHelper extends CoreClass {
 
     get = async (...args) => {
         const id = StringHelper.generateUUID();
+        const url = args[0];
+        const config = args[1] ?? {};
+        const defaultTimeout = Number(process.env.HTTP_TIMEOUT_MS);
+        const resolvedDefaultTimeout =
+            Number.isFinite(defaultTimeout) && defaultTimeout > 0 ? defaultTimeout : 45000;
+        const timeout = typeof config.timeout === 'number' ? config.timeout : resolvedDefaultTimeout;
 
         this.logger.info4(`request_id:${id} - Request send to external system; HTTP/GET; ${args.map(x => typeof x === 'object' ? JSON.stringify(x.headers ? this.#removeSecrets(x.headers) : x) : x.toString()).join('; ')}`);
 
-        return this.#trackRequest(() => axios.get(...args).then(response => {
+        return this.#trackRequest(() => axios.get(url, { ...config, timeout }).then(response => {
             this.logger.info3(`request_id:${id} - Response from external system; status ${response.status}; ${JSON.stringify(response.data)}`);
 
             return response;
@@ -24,10 +30,17 @@ export default class WebRequestHelper extends CoreClass {
 
     post = async (...args) => {
         const id = StringHelper.generateUUID();
+        const url = args[0];
+        const data = args[1];
+        const config = args[2] ?? {};
+        const defaultTimeout = Number(process.env.HTTP_TIMEOUT_MS);
+        const resolvedDefaultTimeout =
+            Number.isFinite(defaultTimeout) && defaultTimeout > 0 ? defaultTimeout : 45000;
+        const timeout = typeof config.timeout === 'number' ? config.timeout : resolvedDefaultTimeout;
 
         this.logger.info4(`request_id:${id} - Request send to external system; HTTP/POST; ${args.map(x => typeof x === 'object' ? JSON.stringify(x.headers ? this.#removeSecrets(x.headers) : x) : x.toString()).join('; ')}`);
 
-        return this.#trackRequest(() => axios.post(...args).then(response => {
+        return this.#trackRequest(() => axios.post(url, data, { ...config, timeout }).then(response => {
             this.logger.info3(`request_id:${id} - Response from external system; status ${response.status}; ${JSON.stringify(response.data)}`);
 
             return response;
@@ -36,10 +49,17 @@ export default class WebRequestHelper extends CoreClass {
 
     gpost = async (...args) => {
         const id = StringHelper.generateUUID();
+        const url = args[0];
+        const data = args[1];
+        const config = args[2] ?? {};
+        const defaultTimeout = Number(process.env.HTTP_TIMEOUT_MS);
+        const resolvedDefaultTimeout =
+            Number.isFinite(defaultTimeout) && defaultTimeout > 0 ? defaultTimeout : 45000;
+        const timeout = typeof config.timeout === 'number' ? config.timeout : resolvedDefaultTimeout;
 
         this.logger.info4(`request_id:${id} - Request send to external system; HTTP/POST; ${args.map(x => typeof x === 'object' ? JSON.stringify(x.headers ? this.#removeSecrets(x.headers) : x).replace(/\\n/g, '').replace(/ /g, '') : x.toString()).join(' ; ')}`);
 
-        return this.#trackRequest(() => axios.post(...args).then(response => {
+        return this.#trackRequest(() => axios.post(url, data, { ...config, timeout }).then(response => {
             this.logger.info3(`request_id:${id} - Response recieved from external system; status ${response.status}; ${JSON.stringify(response.data)}`);
 
             return response;
