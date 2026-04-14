@@ -157,9 +157,10 @@ export default class WebRequestHelper extends CoreClass {
             .catch(async error => {
                 if (axios.isAxiosError(error)) {
                     logData.isError = true;
-                    logData.status = error.status;
+                    logData.status = error.response?.status || error.status || 0;
                     logData.responseTime = this.#getEndTime(start).toFixed(2);
-                    logData.response = JSON.stringify(error.data);
+                    const errorPayload = error.response?.data ?? error.data ?? null;
+                    logData.response = JSON.stringify(errorPayload);
                 }
 
                 // Save log
