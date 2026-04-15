@@ -47,6 +47,7 @@ export default class ShopifyObjectHelper extends CoreClass {
                 order_date: new Date(x.createdAt).toISOString().split('T')[0],
                 last_discount: x.totalDiscounts - x.lineItems.nodes.reduce((x, y) => (Number(x.totalDiscount ?? 0) + Number(y.totalDiscount ?? 0)), 0),
                 payment: Number(x.netPayment),
+                shipping_payment: Number(x.totalShippingPriceSet?.shopMoney?.amount ?? 0),
                 is_receiver_not_customer: x.shippingAddress.name ? x.customer.displayName !== x.shippingAddress.name : false,
                 is_cancelled: Boolean(x.cancelReason),
                 customer: {

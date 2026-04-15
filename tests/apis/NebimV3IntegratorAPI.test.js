@@ -325,6 +325,18 @@ describe('NebimV3IntegratorAPI', () => {
 
       await expect(api.connectionProvider(mockExec)).rejects.toThrow('Bad request error');
     });
+
+    it('should throw original error when exec returns Error object', async () => {
+      const mockToken = 'token';
+      mockCache.get.mockResolvedValue({
+        token: mockToken,
+        expiryDate: new Date(Date.now() + 10000),
+      });
+
+      const mockExec = jest.fn().mockResolvedValue(new Error('Nebim timeout'));
+
+      await expect(api.connectionProvider(mockExec)).rejects.toThrow('Nebim timeout');
+    });
   });
 
   describe('runProc', () => {

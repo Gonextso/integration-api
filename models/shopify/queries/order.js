@@ -18,6 +18,12 @@ query Orders($cursor: String) {
                 note
                 totalDiscounts
                 totalPrice
+                totalShippingPriceSet {
+                    shopMoney {
+                        amount
+                        currencyCode
+                    }
+                }
                 billingAddress {
                     address1
                     address2
@@ -118,6 +124,12 @@ query GetOrdersById($ids: [ID!]!) {
       note
       totalDiscounts
       totalPrice
+      totalShippingPriceSet {
+        shopMoney {
+          amount
+          currencyCode
+        }
+      }
       billingAddress {
         address1
         address2

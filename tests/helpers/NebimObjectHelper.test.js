@@ -37,6 +37,8 @@ describe('NebimObjectHelper', () => {
       _id: 'test-tenant-id',
       name: 'test-tenant',
       nebim: {
+        cargoItemCode: 'CARGO001',
+        isCargoService: false,
         product: {
           categoryKeysFrom: ['Category1', 'Category2'],
         },
@@ -288,6 +290,87 @@ describe('NebimObjectHelper', () => {
       expect(result.Description).toContain('ORDER001');
       // Note: Even with empty array, code adds "tags: " prefix, so we just verify description contains order_id
       expect(result.Description).toContain('ORDER001');
+    });
+
+    it('should append cargo line when shipping payment exists', () => {
+      const order = {
+        order_id: 'ORDER001',
+        order_date: '2024-01-01',
+        payment: 1000,
+        shipping_payment: 49.9,
+        tags: [],
+        lines: [],
+      };
+
+      const customer = { CustomerCode: 'CUST001' };
+
+      const result = NebimObjectHelper.toNebimOrder(mockTenant, order, customer);
+
+      expect(result.Lines).toHaveLength(1);
+      expect(result.Lines[0]).toEqual({
+        ItemTypeCode: '1',
+        ItemCode: 'CARGO001',
+        Qty1: 1,
+        PriceVI: 49.9,
+      });
+    });
+
+    it('should set cargo item type to 5 when isCargoService is true', () => {
+      const order = {
+        order_id: 'ORDER001',
+        order_date: '2024-01-01',
+        payment: 1000,
+        shipping_payment: 10,
+        tags: [],
+        lines: [],
+      };
+      const customer = { CustomerCode: 'CUST001' };
+
+      mockTenant.nebim.isCargoService = true;
+
+      const result = NebimObjectHelper.toNebimOrder(mockTenant, order, customer);
+
+      expect(result.Lines[0].ItemTypeCode).toBe('5');
+    });
+
+    it('should throw when shipping payment exists but cargo item code is missing', () => {
+      const order = {
+        order_id: 'ORDER001',
+        order_date: '2024-01-01',
+        payment: 1000,
+        shipping_payment: 10,
+        tags: [],
+        lines: [],
+      };
+      const customer = { CustomerCode: 'CUST001' };
+
+      mockTenant.nebim.cargoItemCode = '';
+
+      expect(() => NebimObjectHelper.toNebimOrder(mockTenant, order, customer)).toThrow(
+        'Cargo item code is required when shipping payment exists for order ORDER001'
+      );
+    });
+
+    it('should use backward-compatible cargo fields under nebim.order', () => {
+      const order = {
+        order_id: 'ORDER001',
+        order_date: '2024-01-01',
+        payment: 1000,
+        shipping_payment: 10,
+        tags: [],
+        lines: [],
+      };
+      const customer = { CustomerCode: 'CUST001' };
+
+      delete mockTenant.nebim.cargoItemCode;
+      delete mockTenant.nebim.isCargoService;
+      mockTenant.nebim.order.cargoItemCode = '  CARGO-LEGACY  ';
+      mockTenant.nebim.order.isCargoService = true;
+
+      const result = NebimObjectHelper.toNebimOrder(mockTenant, order, customer);
+
+      expect(result.Lines[0].ItemCode).toBe('CARGO-LEGACY');
+      expect(result.Lines[0].ItemTypeCode).toBe('5');
     });
   });
 

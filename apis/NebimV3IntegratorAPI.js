@@ -76,6 +76,12 @@ export default class NebimV3IntegratorAPI extends CoreAPI {
             "Content-Type": "application/json"
         });
 
+        if (data instanceof Error) this.throws(data.message);
+
+        if (!data || typeof data !== "object") {
+            this.throws("Nebim V3 Integrator returned invalid response");
+        }
+
         if (data["StatusCode"] >= HttpStatusCodes.BAD_REQUEST.code) this.throws(data["ExceptionMessage"]);
 
         return data;
@@ -89,6 +95,7 @@ export default class NebimV3IntegratorAPI extends CoreAPI {
             headers: headers
         });
 
+        if (response instanceof Error) return response;
         return response.data;
     })
 
@@ -100,6 +107,7 @@ export default class NebimV3IntegratorAPI extends CoreAPI {
             headers: headers
         });
 
+        if (response instanceof Error) return response;
         return response.data ?? {};
     })
 
@@ -117,6 +125,7 @@ export default class NebimV3IntegratorAPI extends CoreAPI {
             headers: headers
         });
 
+        if (response instanceof Error) return response;
         return response.data;
     })
 
@@ -128,6 +137,7 @@ export default class NebimV3IntegratorAPI extends CoreAPI {
             }
         });
 
+        if (response instanceof Error) return response;
         return response.data;
     })
 
@@ -138,6 +148,7 @@ export default class NebimV3IntegratorAPI extends CoreAPI {
             headers: headers
         });
 
+        if (response instanceof Error) return response;
         return response.data;
     }, host)
 }
