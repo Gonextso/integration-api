@@ -92,6 +92,8 @@ model TenantNebim {
   salesUrl                      String?  @map("sales_url")
   isActive                      Boolean  @default(true) @map("is_active")
   blockProductGenerationWhenOff Boolean  @default(false) @map("block_product_generation_when_off")
+  cargoItemCode                 String?  @map("cargo_item_code")
+  isCargoService                Boolean  @default(false) @map("is_cargo_service")
   productCategoryKeysFrom       String[] @map("product_category_keys_from")
   customerPhoneType             String   @default("7") @map("customer_phone_type")
   customerAddressType           String   @default("1") @map("customer_address_type")

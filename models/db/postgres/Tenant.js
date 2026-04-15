@@ -89,6 +89,7 @@ class TenantModel {
           create: {
             isActive: true,
             blockProductGenerationWhenOff: false,
+            isCargoService: false,
             productCategoryKeysFrom: [],
             customerPhoneType: '7',
             customerAddressType: '1',
@@ -433,6 +434,8 @@ class TenantModel {
         inactivationReasonCode: tenant.nebim?.customerInactivationReasonCode || null,
       },
       order: {
+        cargoItemCode: tenant.nebim?.cargoItemCode || null,
+        isCargoService: tenant.nebim?.isCargoService ?? false,
         deliveryCompany: tenant.nebim?.orderDeliveryCompany || null,
         posTerminalId: tenant.nebim?.orderPosTerminalId ?? 1,
         creditCardType: tenant.nebim?.orderCreditCardType || null,
