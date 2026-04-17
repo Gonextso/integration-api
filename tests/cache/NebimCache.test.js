@@ -14,6 +14,7 @@ const mockRedisAPI = {
 
 const mockStringHelper = {
   compareStrings: jest.fn(),
+  normalizeString: jest.fn(),
 };
 
 const mockCoreCache = jest.fn().mockImplementation(() => ({
@@ -44,6 +45,10 @@ await jest.unstable_mockModule('../../core/CoreCache.js', () => ({
 }));
 
 const { default: NebimCache } = await import('../../cache/NebimCache.js');
+const normalizeStringMock = (str) => (typeof str === 'string' ? str : '')
+  .toLocaleLowerCase('tr-TR')
+  .normalize('NFD')
+  .replaceAll(/[\u0300-\u036f]/g, '');
 
 describe('NebimCache', () => {
   let cache;
@@ -91,17 +96,8 @@ describe('NebimCache', () => {
       ];
 
       cache.get.mockResolvedValue(allAddressCodes);
-      // Mock compareStrings to return true for first item (both city and district match)
-      // and false for second item
-      mockStringHelper.compareStrings.mockImplementation((str1, str2) => {
-        // First item: Istanbul matches Istanbul, Kadikoy matches Kadikoy
-        if (str1 === 'Istanbul' && str2 === 'Istanbul') return true;
-        if (str1 === 'Kadikoy' && str2 === 'Kadikoy') return true;
-        // Second item: Ankara matches Ankara but Cankaya doesn't match Kadikoy
-        if (str1 === 'Ankara' && str2 === 'Ankara') return true;
-        if (str1 === 'Cankaya' && str2 === 'Kadikoy') return false;
-        return false;
-      });
+      mockStringHelper.compareStrings.mockImplementation((str1, str2) => str1 === str2);
+      mockStringHelper.normalizeString.mockImplementation(normalizeStringMock);
 
       const result = await cache.findAddressCode({ city, district });
 
@@ -124,6 +120,7 @@ describe('NebimCache', () => {
 
       cache.get.mockResolvedValue(allAddressCodes);
       mockStringHelper.compareStrings.mockReturnValue(false);
+      mockStringHelper.normalizeString.mockImplementation(normalizeStringMock);
 
       const result = await cache.findAddressCode({ city, district });
 
@@ -135,6 +132,7 @@ describe('NebimCache', () => {
       const district = 'Kadikoy';
 
       cache.get.mockResolvedValue([]);
+      mockStringHelper.normalizeString.mockImplementation(normalizeStringMock);
 
       const result = await cache.findAddressCode({ city, district });
 
@@ -147,6 +145,7 @@ describe('NebimCache', () => {
       const district = 'Kadikoy';
 
       cache.get.mockResolvedValue(null);
+      mockStringHelper.normalizeString.mockImplementation(normalizeStringMock);
 
       const result = await cache.findAddressCode({ city, district });
 
@@ -170,11 +169,78 @@ describe('NebimCache', () => {
       mockStringHelper.compareStrings
         .mockReturnValueOnce(true) // City match
         .mockReturnValueOnce(true); // District match
+      mockStringHelper.normalizeString.mockImplementation(normalizeStringMock);
 
       await cache.findAddressCode({ city, district });
 
       expect(mockStringHelper.compareStrings).toHaveBeenCalledWith('Istanbul', 'Istanbul');
       expect(mockStringHelper.compareStrings).toHaveBeenCalledWith('Kadikoy', 'Kadikoy');
+    });
+
+    it('should match "Merkez" with "Merkez (Sirnak)" in same city', async () => {
+      const allAddressCodes = [
+        {
+          CityCode: '7301',
+          CityDescription: 'Sirnak',
+          DistrictCode: '730101',
+          DistrictDescription: 'Merkez (Sirnak)',
+        },
+      ];
+
+      cache.get.mockResolvedValue(allAddressCodes);
+      mockStringHelper.compareStrings.mockImplementation((str1, str2) => str1 === str2);
+      mockStringHelper.normalizeString.mockImplementation(normalizeStringMock);
+
+      const result = await cache.findAddressCode({ city: 'Sirnak', district: 'Merkez' });
+      expect(result).toEqual(allAddressCodes[0]);
+    });
+
+    it('should not match district from another city', async () => {
+      const allAddressCodes = [
+        {
+          CityCode: '7301',
+          CityDescription: 'Sirnak',
+          DistrictCode: '730101',
+          DistrictDescription: 'Merkez (Sirnak)',
+        },
+        {
+          CityCode: '2101',
+          CityDescription: 'Diyarbakir',
+          DistrictCode: '210101',
+          DistrictDescription: 'Merkez',
+        },
+      ];
+
+      cache.get.mockResolvedValue(allAddressCodes);
+      mockStringHelper.compareStrings.mockImplementation((str1, str2) => str1 === str2);
+      mockStringHelper.normalizeString.mockImplementation(normalizeStringMock);
+
+      const result = await cache.findAddressCode({ city: 'Sirnak', district: 'Merkez' });
+      expect(result).toEqual(allAddressCodes[0]);
+    });
+
+    it('should pick deterministic best match when multiple candidates exist', async () => {
+      const allAddressCodes = [
+        {
+          CityCode: '7301',
+          CityDescription: 'Sirnak',
+          DistrictCode: '730102',
+          DistrictDescription: 'Merkez ilcesi',
+        },
+        {
+          CityCode: '7301',
+          CityDescription: 'Sirnak',
+          DistrictCode: '730101',
+          DistrictDescription: 'Merkez',
+        },
+      ];
+
+      cache.get.mockResolvedValue(allAddressCodes);
+      mockStringHelper.compareStrings.mockImplementation((str1, str2) => str1 === str2);
+      mockStringHelper.normalizeString.mockImplementation(normalizeStringMock);
+
+      const result = await cache.findAddressCode({ city: 'Sirnak', district: 'Merkez' });
+      expect(result).toEqual(allAddressCodes[1]);
     });
   });
 });
