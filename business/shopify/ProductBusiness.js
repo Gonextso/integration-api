@@ -63,7 +63,10 @@ export default class ShopifyProductBusiness extends CoreClass {
                 continue;
             }
 
-            if (this.tenant.shopify.billing.planKey !== SystemCodes.BILLING_PLANS.ENTERPRISE.KEY) {
+            if (
+                this.tenant.shopify.billing.planKey !== SystemCodes.BILLING_PLANS.ENTERPRISE.KEY
+                && this.tenant.shopify.billing.planKey !== SystemCodes.BILLING_PLANS.PRO.KEY
+            ) {
                 const limitBusiness = new LimitBusiness(await Tenant.findById(this.tenant.id));
                 let isProductAlreadySynced = syncedBarcodeDocs.length > 0;
                 let isLimitAvailable = true;
@@ -268,9 +271,14 @@ export default class ShopifyProductBusiness extends CoreClass {
                         if (this.tenant.shopify.billing.planKey === SystemCodes.BILLING_PLANS.PRO.KEY) {
                             const limitBusiness = new LimitBusiness(await Tenant.findById(this.tenant.id));
                             for (const variant of localVariantsForSync) {
+                                const existingSync = localSyncedBarcodeMap.get(variant.barcode);
                                 try {
                                     await limitBusiness.checkLimitAvailability(SystemCodes.LIMIT_TYPE.PRODUCT_DETAILS, 1);
                                 } catch (error) {
+                                    if (existingSync) {
+                                        this.logger.info4(`Barcode ${variant.barcode} already synced, skipping limit check`);
+                                        continue;
+                                    }
                                     this.logger.warn2(`SKU limit exceed for product ${product.erp_id}, variant ${variant.barcode}`);
                                     return;
                                 }

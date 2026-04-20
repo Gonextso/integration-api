@@ -33,6 +33,13 @@ const mockSystemHelper = {
   wait: jest.fn(),
 };
 
+const mockSystemCache = {
+  lockWithTimeout: jest.fn(),
+  unlock: jest.fn(),
+};
+
+const mockSystemCacheClass = jest.fn().mockImplementation(() => mockSystemCache);
+
 const mockCoreClass = jest.fn().mockImplementation(() => ({
   tenant: {},
   logger: {
@@ -56,6 +63,10 @@ await jest.unstable_mockModule('../../../models/db/SyncedBarcode.js', () => ({
   default: mockSyncedBarcode,
 }));
 
+await jest.unstable_mockModule('../../../models/db/postgres/SyncedBarcode.js', () => ({
+  default: mockSyncedBarcode,
+}));
+
 await jest.unstable_mockModule('../../../business/LimitBusiness.js', () => ({
   default: mockLimitBusinessClass,
 }));
@@ -64,8 +75,24 @@ await jest.unstable_mockModule('../../../models/db/Tenant.js', () => ({
   default: mockTenantModel,
 }));
 
+await jest.unstable_mockModule('../../../models/db/postgres/Tenant.js', () => ({
+  default: mockTenantModel,
+}));
+
 await jest.unstable_mockModule('../../../helpers/SystemHelper.js', () => ({
   default: mockSystemHelper,
+}));
+
+await jest.unstable_mockModule('../../../cache/SystemCache.js', () => ({
+  default: mockSystemCacheClass,
+}));
+
+await jest.unstable_mockModule('../../../enums/CacheFields.js', () => ({
+  default: {
+    SYSTEM: {
+      PRODUCT_SYNC_BARCODE_LOCK: 'product_sync_barcode_lock',
+    },
+  },
 }));
 
 await jest.unstable_mockModule('../../../core/CoreClass.js', () => ({
@@ -139,40 +166,50 @@ describe('ShopifyProductBusiness', () => {
       mockSyncedBarcode.find.mockResolvedValue([]);
       mockTenantModel.findById.mockResolvedValue(mockTenant);
       mockLimitBusiness.checkLimitAvailability.mockResolvedValue(undefined);
-      mockApi.query
-        .mockResolvedValueOnce({
-          data: {
-            productSet: {
-              product: {
-                id: 'gid://shopify/Product/1',
-                variants: {
-                  nodes: [
-                    { id: 'gid://shopify/ProductVariant/1' },
-                  ],
+      mockApi.query.mockImplementation(async (query) => {
+        if (query.includes('productSet(')) {
+          return {
+            data: {
+              productSet: {
+                product: {
+                  id: 'gid://shopify/Product/1',
+                  variants: {
+                    nodes: [
+                      { id: 'gid://shopify/ProductVariant/1' },
+                    ],
+                  },
                 },
+                userErrors: [],
               },
-              userErrors: [],
             },
-          },
-        })
-        .mockResolvedValueOnce({
-          data: {
-            metafieldDefinitions: {
-              edges: [],
+          };
+        }
+
+        if (query.includes('metafieldDefinitions')) {
+          return {
+            data: {
+              metafieldDefinitions: {
+                edges: [],
+              },
             },
-          },
-          errors: undefined,
-        })
-        // Mock for metafield definition create (if needed)
-        .mockResolvedValue({
-          data: {
-            metafieldDefinitionCreate: {
-              metafieldDefinition: { id: 'def1' },
-              userErrors: [],
+            errors: undefined,
+          };
+        }
+
+        if (query.includes('metafieldDefinitionCreate')) {
+          return {
+            data: {
+              metafieldDefinitionCreate: {
+                metafieldDefinition: { id: 'def1' },
+                userErrors: [],
+              },
             },
-          },
-          errors: undefined,
-        });
+            errors: undefined,
+          };
+        }
+
+        return { data: {} };
+      });
 
       mockSyncedBarcode.updateOne.mockResolvedValue({});
 
@@ -241,40 +278,50 @@ describe('ShopifyProductBusiness', () => {
       mockSyncedBarcode.find.mockResolvedValue([existingSync]);
       mockTenantModel.findById.mockResolvedValue(mockTenant);
       mockLimitBusiness.checkLimitAvailability.mockResolvedValue(undefined);
-      mockApi.query
-        .mockResolvedValueOnce({
-          data: {
-            productSet: {
-              product: {
-                id: 'gid://shopify/Product/1',
-                variants: {
-                  nodes: [
-                    { id: 'gid://shopify/ProductVariant/1' },
-                  ],
+      mockApi.query.mockImplementation(async (query) => {
+        if (query.includes('productSet(')) {
+          return {
+            data: {
+              productSet: {
+                product: {
+                  id: 'gid://shopify/Product/1',
+                  variants: {
+                    nodes: [
+                      { id: 'gid://shopify/ProductVariant/1' },
+                    ],
+                  },
                 },
+                userErrors: [],
               },
-              userErrors: [],
             },
-          },
-        })
-        .mockResolvedValueOnce({
-          data: {
-            metafieldDefinitions: {
-              edges: [],
+          };
+        }
+
+        if (query.includes('metafieldDefinitions')) {
+          return {
+            data: {
+              metafieldDefinitions: {
+                edges: [],
+              },
             },
-          },
-          errors: undefined,
-        })
-        // Mock for metafield definition create (if needed)
-        .mockResolvedValue({
-          data: {
-            metafieldDefinitionCreate: {
-              metafieldDefinition: { id: 'def1' },
-              userErrors: [],
+            errors: undefined,
+          };
+        }
+
+        if (query.includes('metafieldDefinitionCreate')) {
+          return {
+            data: {
+              metafieldDefinitionCreate: {
+                metafieldDefinition: { id: 'def1' },
+                userErrors: [],
+              },
             },
-          },
-          errors: undefined,
-        });
+            errors: undefined,
+          };
+        }
+
+        return { data: {} };
+      });
 
       mockSyncedBarcode.updateOne.mockResolvedValue({});
 
@@ -369,6 +416,121 @@ describe('ShopifyProductBusiness', () => {
       await business.syncProductsDetailBulk(detailList);
 
       expect(business.logger.info4).toHaveBeenCalled();
+    });
+
+    it('should bypass PRO limit check for already synced barcode', async () => {
+      mockTenant.shopify.billing.planKey = SystemCodes.BILLING_PLANS.PRO.KEY;
+
+      const detailList = [
+        {
+          erp_id: 'ITEM001',
+          title: 'Test Product',
+          category: 'Category1',
+          variants: [
+            {
+              barcode: 'BAR001',
+              sku: 'SKU001',
+              color: 'Red',
+              dimention: 'M',
+              sale_price: '100.00',
+            },
+          ],
+          attributes: [],
+        },
+      ];
+
+      mockSyncedBarcode.find.mockResolvedValue([
+        {
+          barcode: 'BAR001',
+          productId: 'gid://shopify/Product/1',
+          variantId: 'gid://shopify/ProductVariant/1',
+        },
+      ]);
+      mockTenantModel.findById.mockResolvedValue(mockTenant);
+      mockLimitBusiness.checkLimitAvailability.mockRejectedValue(new Error('Limit exceeded'));
+      mockSystemCache.lockWithTimeout.mockResolvedValue(true);
+      mockSystemCache.unlock.mockResolvedValue(true);
+      mockApi.query.mockImplementation(async (query) => {
+        if (query.includes('productSet(')) {
+          return {
+            data: {
+              productSet: {
+                product: {
+                  id: 'gid://shopify/Product/1',
+                  variants: {
+                    nodes: [{ id: 'gid://shopify/ProductVariant/1' }],
+                  },
+                },
+                userErrors: [],
+              },
+            },
+          };
+        }
+
+        if (query.includes('metafieldDefinitions')) {
+          return {
+            data: {
+              metafieldDefinitions: {
+                edges: [],
+              },
+            },
+          };
+        }
+
+        if (query.includes('metafieldDefinitionCreate')) {
+          return {
+            data: {
+              metafieldDefinitionCreate: {
+                metafieldDefinition: { id: 'def1' },
+                userErrors: [],
+              },
+            },
+          };
+        }
+
+        return { data: {} };
+      });
+      mockSyncedBarcode.updateOne.mockResolvedValue({});
+
+      await business.syncProductsDetailBulk(detailList);
+
+      expect(mockLimitBusiness.checkLimitAvailability).toHaveBeenCalled();
+      expect(business.logger.info4).toHaveBeenCalledWith('Barcode BAR001 already synced, skipping limit check');
+      expect(mockApi.query).toHaveBeenCalled();
+    });
+
+    it('should stop PRO sync when limit is exceeded for new barcode', async () => {
+      mockTenant.shopify.billing.planKey = SystemCodes.BILLING_PLANS.PRO.KEY;
+
+      const detailList = [
+        {
+          erp_id: 'ITEM001',
+          title: 'Test Product',
+          category: 'Category1',
+          variants: [
+            {
+              barcode: 'BAR001',
+              sku: 'SKU001',
+              color: 'Red',
+              dimention: 'M',
+              sale_price: '100.00',
+            },
+          ],
+          attributes: [],
+        },
+      ];
+
+      mockSyncedBarcode.find.mockResolvedValue([]);
+      mockTenantModel.findById.mockResolvedValue(mockTenant);
+      mockLimitBusiness.checkLimitAvailability.mockRejectedValue(new Error('Limit exceeded'));
+      mockSystemCache.lockWithTimeout.mockResolvedValue(true);
+      mockSystemCache.unlock.mockResolvedValue(true);
+
+      await business.syncProductsDetailBulk(detailList);
+
+      expect(mockLimitBusiness.checkLimitAvailability).toHaveBeenCalled();
+      expect(business.logger.warn2).toHaveBeenCalledWith('SKU limit exceed for product ITEM001, variant BAR001');
+      expect(mockApi.query).not.toHaveBeenCalled();
     });
 
     it('should create metafield definitions when needed', async () => {
