@@ -39,6 +39,7 @@ describe('NebimObjectHelper', () => {
       nebim: {
         cargoItemCode: 'CARGO001',
         isCargoService: false,
+        salesUrl: 'https://test-shop.com',
         product: {
           categoryKeysFrom: ['Category1', 'Category2'],
         },
@@ -61,7 +62,6 @@ describe('NebimObjectHelper', () => {
           },
         },
       },
-      salesUrl: 'https://test-shop.com',
     };
 
     jest.clearAllMocks();
