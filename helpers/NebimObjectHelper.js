@@ -107,7 +107,7 @@ export default class NebimObjectHelper extends CoreClass {
             IsCompleted: true,
             IsSalesViaInternet: true,
             OrdersViaInternetInfo: {
-                SalesUrl: tenant.salesUrl,
+                SalesUrl: tenant.nebim?.salesUrl,
                 PaymentTypeCode: 1,
                 PaymentTypeDescription: "KREDIKARTI/BANKAKARTI",
                 PaymentAgent: "",
