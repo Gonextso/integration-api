@@ -131,7 +131,7 @@ class TenantModel {
       updates.schedules = {
         upsert: {
           create: {
-            nebimProductInventoryInterval: '0 * * * *',
+            nebimProductInventoryInterval: '*/5 * * * *',
             nebimProductInventoryStartDate: moment().subtract(1, 'hours').toDate(),
             nebimProductInventoryIsActive: false,
             nebimProductDetailsInterval: '0 * * * *',
@@ -382,7 +382,7 @@ class TenantModel {
       nebim: {
         product: {
           inventory: {
-            interval: tenant.schedules?.nebimProductInventoryInterval || '0 * * * *',
+            interval: tenant.schedules?.nebimProductInventoryInterval || '*/5 * * * *',
             startDate: tenant.schedules?.nebimProductInventoryStartDate?.toISOString() || null,
             isActive: tenant.schedules?.nebimProductInventoryIsActive ?? false,
           },
