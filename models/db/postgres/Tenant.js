@@ -95,12 +95,12 @@ class TenantModel {
             customerAddressType: '1',
             customerConsentSource: 'HS_WEB',
             orderPosTerminalId: 1,
-            procProductDetails: 'sp_INV_GetProductDetails',
-            procProductInventory: 'sp_INV_GetProductInventory',
-            procProductPrice: 'sp_INV_GetProductPrice',
-            procCustomerCheck: 'qry_B2C_GetCustomer',
-            procOrderStatus: 'sp_INV_OrderStatus',
-            procDefaultsAddressCodes: 'sp_INV_GetAddressList',
+            procProductDetails: 'sp_GO_GetProductDetails',
+            procProductInventory: 'sp_GO_GetProductInventory',
+            procProductPrice: 'sp_GO_GetProductPrice',
+            procCustomerCheck: 'sp_GO_GetCustomer',
+            procOrderStatus: 'sp_GO_OrderStatus',
+            procDefaultsAddressCodes: 'sp_GO_GetAddressList',
           },
           update: {},
         },
@@ -447,18 +447,18 @@ class TenantModel {
       },
       procNames: {
         product: {
-          details: tenant.nebim?.procProductDetails || 'sp_INV_GetProductDetails',
-          inventory: tenant.nebim?.procProductInventory || 'sp_INV_GetProductInventory',
-          price: tenant.nebim?.procProductPrice || 'sp_INV_GetProductPrice',
+          details: tenant.nebim?.procProductDetails || 'sp_GO_GetProductDetails',
+          inventory: tenant.nebim?.procProductInventory || 'sp_GO_GetProductInventory',
+          price: tenant.nebim?.procProductPrice || 'sp_GO_GetProductPrice',
         },
         customer: {
-          check: tenant.nebim?.procCustomerCheck || 'qry_B2C_GetCustomer',
+          check: tenant.nebim?.procCustomerCheck || 'sp_GO_GetCustomer',
         },
         order: {
-          status: tenant.nebim?.procOrderStatus || 'sp_INV_OrderStatus',
+          status: tenant.nebim?.procOrderStatus || 'sp_GO_OrderStatus',
         },
         defaults: {
-          addressCodes: tenant.nebim?.procDefaultsAddressCodes || 'sp_INV_GetAddressList',
+          addressCodes: tenant.nebim?.procDefaultsAddressCodes || 'sp_GO_GetAddressList',
         },
       },
     };
