@@ -169,17 +169,10 @@ describe('ShopifyInventoryBusiness', () => {
         { node: { id: 'loc1', isPrimary: true } },
       ]);
 
-      // When fetchInventoryIds returns early due to error, ids will be undefined
-      // and setInventory will fail with "Cannot read properties of undefined (reading 'find')"
-      // This is expected behavior - we just verify the error is logged
-      try {
-        await business.syncInventoryBulk(inventoryList);
-      } catch (error) {
-        // Expected error when ids is undefined
-        expect(error.message).toContain('find');
-      }
+      await business.syncInventoryBulk(inventoryList);
 
       expect(business.logger.error).toHaveBeenCalled();
+      expect(mockStoreBusiness.fetchLocations).not.toHaveBeenCalled();
     });
 
     it('should handle unset inventories when barcode not found', async () => {
