@@ -13,9 +13,19 @@ export default class ShopifyInventoryBusiness extends CoreClass {
 
     syncInventoryBulk = async (inventoryList) => {
         const ids = await this.#fetchInventoryIds();
-        const locations = await this.store.fetchLocations();
+        if (!Array.isArray(ids) || ids.length === 0) {
+            this.logger.error("Inventory sync skipped: could not fetch Shopify inventory IDs.");
+            return;
+        }
 
-        await this.#setInventory(ids, inventoryList, locations[0].node.id)
+        const locations = await this.store.fetchLocations();
+        const locationId = locations?.[0]?.node?.id;
+        if (!locationId) {
+            this.logger.error("Inventory sync skipped: no Shopify location found.");
+            return;
+        }
+
+        await this.#setInventory(ids, inventoryList, locationId);
     }
 
     #fetchInventoryIds = async () => {
@@ -30,13 +40,21 @@ export default class ShopifyInventoryBusiness extends CoreClass {
             };
 
             const data = await this.api.query(query, variables);
+            if (!data) {
+                this.logger.error("Empty response while fetching Shopify inventory IDs.");
+                return null;
+            }
 
             if (data.errors) {
                 this.logger.error('GraphQL Errors:', data.errors);
-                return;
+                return null;
             }
 
-            const inventories = data.data.inventoryItems;
+            const inventories = data?.data?.inventoryItems;
+            if (!inventories || !Array.isArray(inventories.edges)) {
+                this.logger.error("Invalid inventory response payload from Shopify.", data);
+                return null;
+            }
 
             inventories.edges.forEach(({ node }) => {
                 allInventories.push(node);
@@ -73,7 +91,9 @@ export default class ShopifyInventoryBusiness extends CoreClass {
 
             const data = await this.api.query(mutation, variables);
 
-            if (data.errors) {
+            if (!data) {
+                this.logger.error("Empty response while setting Shopify inventory.");
+            } else if (data.errors) {
                 this.logger.error("GraphQL Errors:", data.errors);
             } else {
                 dataResults.push(data.data);
