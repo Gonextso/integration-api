@@ -233,6 +233,7 @@ export default class OrderBusiness extends CoreClass {
             const nebimOrderBusiness = new NebimOrderBusiness(this.tenant);
             const shopifyOrderBusiness = new ShopifyOrderBusiness(this.tenant);
             const orderMetadataMapping = [];
+            await nebimOrderBusiness.cacheDefaults();
             const allFailedOrders = await FailedOrder.find({
                 tenant: this.tenant.id,
                 isCancelled: false
