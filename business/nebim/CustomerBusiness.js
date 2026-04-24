@@ -50,8 +50,13 @@ export default class NebimCustomerClass extends CoreClass {
             DistrictCode: addressCodes.DistrictCode,
             Address: address.address_text
         };
-        const [ emailConsentDate, emailConsentTimeZ ] = customer.consents.email.date ? customer.consents.email.date.split("T") : new Date().toISOString().split("T")
-        const [ gsmConsentDate, gsmConsentTimeZ ] = customer.consents.gsm.date ? customer.consents.gsm.date.split("T") : new Date().toISOString().split("T")
+        const nowIso = new Date().toISOString();
+        const emailConsentRaw = customer?.consents?.email?.date ?? nowIso;
+        const gsmConsentRaw = customer?.consents?.gsm?.date ?? nowIso;
+        const emailOptIn = customer?.consents?.email?.is_opt_in ?? false;
+        const gsmOptIn = customer?.consents?.gsm?.is_opt_in ?? false;
+        const [ emailConsentDate, emailConsentTimeZ ] = emailConsentRaw.split("T");
+        const [ gsmConsentDate, gsmConsentTimeZ ] = gsmConsentRaw.split("T");
 
         const base = {
             ModelType: 3,
@@ -89,7 +94,7 @@ export default class NebimCustomerClass extends CoreClass {
                         ConsentSource: this.tenant.nebim.customer.consentSource,
                         Email: true,
                         FormNumber: "digital",
-                        OptIn: customer.consents.email.is_opt_in,
+                        OptIn: emailOptIn,
                         RecipientType: 1,
                         SMS: false
                     } : {}
@@ -107,7 +112,7 @@ export default class NebimCustomerClass extends CoreClass {
                         ConsentSource: this.tenant.nebim.customer.consentSource,
                         Email: false,
                         FormNumber: "digital",
-                        OptIn: customer.consents.gsm.is_opt_in,
+                        OptIn: gsmOptIn,
                         RecipientType: 1,
                         SMS: true
                     } : {}
