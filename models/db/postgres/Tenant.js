@@ -115,7 +115,7 @@ class TenantModel {
             planKey: 'BASIC', // PlanKey enum value
             orderLimit: 10,
             orderUsed: 0,
-            productDetailsLimit: 1000,
+            productDetailsLimit: 500,
             productDetailsUsed: 0,
             periodStart: new Date(),
             periodEnd: moment().add(1, 'months').toDate(),
@@ -234,7 +234,7 @@ class TenantModel {
             planKey: 'BASIC',
             orderLimit: 10,
             orderUsed: limitsUpdate.order?.used ?? 0,
-            productDetailsLimit: 1000,
+            productDetailsLimit: 500,
             productDetailsUsed: limitsUpdate.product_details?.used ?? 0,
             periodStart: new Date(),
             periodEnd: moment().add(1, 'months').toDate(),
@@ -366,7 +366,7 @@ class TenantModel {
           used: tenant.pricing?.orderUsed ?? 0,
         },
         product_details: {
-          limit: tenant.pricing?.productDetailsLimit ?? 1000,
+          limit: tenant.pricing?.productDetailsLimit ?? 500,
           used: tenant.pricing?.productDetailsUsed ?? 0,
         },
       },

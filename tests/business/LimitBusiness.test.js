@@ -54,7 +54,7 @@ describe('LimitBusiness', () => {
               used: 50,
             },
             product_details: {
-              limit: 1000,
+              limit: 500,
               used: 200,
             },
           },
