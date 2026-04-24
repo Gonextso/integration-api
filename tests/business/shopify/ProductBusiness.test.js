@@ -114,7 +114,7 @@ describe('ShopifyProductBusiness', () => {
           planKey: SystemCodes.BILLING_PLANS.BASIC.KEY,
           limits: {
             product_details: {
-              limit: 1000,
+              limit: 500,
               used: 0,
             },
           },
