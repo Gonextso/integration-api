@@ -102,7 +102,7 @@ export default class NebimObjectHelper extends CoreClass {
             OrderDate: order.order_date,
             DocumentNumber: order.order_id,
             Description: `shopify_info:${order.order_id}${order.tags ? '; tags: ' : ''}${order.tags.join(', ')}`,
-            DeliveryCompanyCode: tenant.nebim.order.deliveryCompanyCode,
+            DeliveryCompanyCode: tenant.nebim.order.deliveryCompanyCode ?? tenant.nebim.order.deliveryCompany,
             ShipmentMethodCode: 2,
             IsCompleted: true,
             IsSalesViaInternet: true,

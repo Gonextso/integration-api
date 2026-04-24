@@ -436,6 +436,8 @@ class TenantModel {
       order: {
         cargoItemCode: tenant.nebim?.cargoItemCode || null,
         isCargoService: tenant.nebim?.isCargoService ?? false,
+        deliveryCompanyCode: tenant.nebim?.orderDeliveryCompany || null,
+        // Backward compatibility for callers that still read `deliveryCompany`.
         deliveryCompany: tenant.nebim?.orderDeliveryCompany || null,
         posTerminalId: tenant.nebim?.orderPosTerminalId ?? 1,
         creditCardType: tenant.nebim?.orderCreditCardType || null,
