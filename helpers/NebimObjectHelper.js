@@ -75,7 +75,7 @@ export default class NebimObjectHelper extends CoreClass {
             PriceVI: x.price,
             Qty1: x.quantity,
             LineDescription: x.line_id,
-            LDiscount4: x.line_discount
+            LDiscountVI4: x.line_discount
         }));
 
         if (shippingPayment > 0) {
