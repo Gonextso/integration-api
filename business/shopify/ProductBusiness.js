@@ -267,17 +267,31 @@ export default class ShopifyProductBusiness extends CoreClass {
                             return;
                         }
 
-                        // Check limit availability for PRO plan (ENTERPRISE skips limit check)
+                        // PRO: only net-new variants (no Shopify variantId yet) consume headroom; already-linked rows are not counted.
+                        // If the product already has linked variants, never abort the whole productSet on limit — finish updates in Shopify,
+                        // then useLimit only for variants that were actually new before this run (see loop after mutation).
+                        const hasAnyLinkedVariant = localVariantsForSync.some(
+                            (v) => Boolean(localSyncedBarcodeMap.get(v.barcode)?.variantId)
+                        );
                         if (this.tenant.shopify.billing.planKey === SystemCodes.BILLING_PLANS.PRO.KEY) {
                             const limitBusiness = new LimitBusiness(await Tenant.findById(this.tenant.id));
                             for (const variant of localVariantsForSync) {
-                                const existingSync = localSyncedBarcodeMap.get(variant.barcode);
+                                const priorSync = localSyncedBarcodeMap.get(variant.barcode);
+                                if (priorSync?.variantId) {
+                                    continue;
+                                }
                                 try {
                                     await limitBusiness.checkLimitAvailability(SystemCodes.LIMIT_TYPE.PRODUCT_DETAILS, 1);
                                 } catch (error) {
-                                    if (existingSync) {
+                                    if (priorSync) {
                                         this.logger.info4(`Barcode ${variant.barcode} already synced, skipping limit check`);
                                         continue;
+                                    }
+                                    if (hasAnyLinkedVariant) {
+                                        this.logger.warn2(
+                                            `SKU limit exceeded for new variant(s) on ${product.erp_id}; continuing product sync because product has already-linked variants`
+                                        );
+                                        break;
                                     }
                                     this.logger.warn2(`SKU limit exceed for product ${product.erp_id}, variant ${variant.barcode}`);
                                     return;
@@ -391,6 +405,7 @@ export default class ShopifyProductBusiness extends CoreClass {
                             localExistingProductId = shopifyProduct.id;
                         }
 
+                        const limitBusinessForUsage = new LimitBusiness(await Tenant.findById(this.tenant.id));
                         for (let index = 0; index < localVariantsForSync.length; index++) {
                             const variant = localVariantsForSync[index];
                             const existingSync = localSyncedBarcodeMap.get(variant.barcode);
@@ -409,9 +424,14 @@ export default class ShopifyProductBusiness extends CoreClass {
                                 { upsert: true }
                             );
 
-                            // Increment limit usage for PRO and ENTERPRISE on every sync
-                            const limitBusiness = new LimitBusiness(await Tenant.findById(this.tenant.id));
-                            await limitBusiness.useLimit(SystemCodes.LIMIT_TYPE.PRODUCT_DETAILS, 1);
+                            if (this.tenant.shopify.billing.planKey === SystemCodes.BILLING_PLANS.ENTERPRISE.KEY) {
+                                await limitBusinessForUsage.useLimit(SystemCodes.LIMIT_TYPE.PRODUCT_DETAILS, 1);
+                            } else if (
+                                this.tenant.shopify.billing.planKey === SystemCodes.BILLING_PLANS.PRO.KEY
+                                && !existingSync?.variantId
+                            ) {
+                                await limitBusinessForUsage.useLimit(SystemCodes.LIMIT_TYPE.PRODUCT_DETAILS, 1);
+                            }
                         }
                     } finally {
                         // Always release locks, even if error occurred
