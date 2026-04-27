@@ -113,6 +113,7 @@ class TenantModel {
         upsert: {
           create: {
             planKey: 'BASIC', // PlanKey enum value
+            billingInterval: 'MONTHLY',
             orderLimit: 10,
             orderUsed: 0,
             productDetailsLimit: 500,
@@ -356,6 +357,7 @@ class TenantModel {
     // Always include billing (with defaults if pricing doesn't exist)
     result.shopify.billing = {
       planKey: tenant.pricing?.planKey || 'BASIC',
+      billingInterval: tenant.pricing?.billingInterval ?? 'MONTHLY',
       subscription: {
         id: tenant.pricing?.subscriptionId || null,
         lineId: tenant.pricing?.subscriptionLineId || null,
