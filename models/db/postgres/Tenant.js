@@ -99,6 +99,7 @@ class TenantModel {
             procProductDetails: 'sp_GO_GetProductDetails',
             procProductInventory: 'sp_GO_GetProductInventory',
             procProductPrice: 'sp_GO_GetProductPrice',
+            procFindStoreInventory: 'sp_GO_FindInStore',
             procCustomerCheck: 'sp_GO_GetCustomer',
             procOrderStatus: 'sp_GO_OrderStatus',
             procDefaultsAddressCodes: 'sp_GO_GetAddressList',
@@ -145,6 +146,9 @@ class TenantModel {
             nebimOrderStatusInterval: '0 * * * *',
             nebimOrderStatusStartDate: moment().subtract(1, 'days').toDate(),
             nebimOrderStatusIsActive: false,
+            nebimProductFindInStoreInterval: '*/30 * * * *',
+            nebimProductFindInStoreStartDate: moment().subtract(30, 'minutes').toDate(),
+            nebimProductFindInStoreIsActive: false,
             redentionLogsInterval: '0 0 * * *',
             redentionLogsStartDate: moment().subtract(1, 'days').toDate(),
             redentionLogsIsActive: true,
@@ -171,6 +175,13 @@ class TenantModel {
     }
 
     return tenant;
+  }
+
+  async disableFindInStoreSchedule(tenantId) {
+    await prisma.scheduleTenant.updateMany({
+      where: { tenantId },
+      data: { nebimProductFindInStoreIsActive: false },
+    });
   }
 
   /**
@@ -393,6 +404,11 @@ class TenantModel {
             interval: tenant.schedules?.nebimProductDetailsInterval || '0 * * * *',
             startDate: tenant.schedules?.nebimProductDetailsStartDate?.toISOString() || null,
             isActive: tenant.schedules?.nebimProductDetailsIsActive ?? false,
+          },
+          find_in_store: {
+            interval: tenant.schedules?.nebimProductFindInStoreInterval || '*/30 * * * *',
+            startDate: tenant.schedules?.nebimProductFindInStoreStartDate?.toISOString() || null,
+            isActive: tenant.schedules?.nebimProductFindInStoreIsActive ?? false,
           },
         },
         order: {

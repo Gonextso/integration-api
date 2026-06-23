@@ -4,6 +4,7 @@ import ShopifyInventoryBusiness from "./shopify/InventoryBusiness.js";
 import ShopifyProductBusiness from "./shopify/ProductBusiness.js";
 import ShopifyFindInStoreBusiness from "./shopify/FindInStoreBusiness.js";
 import SystemCodes from "../enums/SystemCodes.js";
+import Tenant from "../models/db/postgres/Tenant.js";
 
 
 export default class ProductBusiness extends CoreClass {
@@ -48,6 +49,12 @@ export default class ProductBusiness extends CoreClass {
 
     syncFindInStoreNebimToShopify = async _ => {
         try {
+            if (this.tenant.shopify?.billing?.planKey !== SystemCodes.BILLING_PLANS.ENTERPRISE.KEY) {
+                await Tenant.disableFindInStoreSchedule(this.tenant.id);
+                this.logger.info2("Sync find in store skipped: tenant is not on ENTERPRISE plan; schedule disabled.");
+                return;
+            }
+
             const nebimProductBusiness = new NebimProductBusiness(this.tenant);
             const findInStoreBusiness = new ShopifyFindInStoreBusiness(this.tenant);
             const batchSize = SystemCodes.FIND_IN_STORE.BARCODE_BATCH_SIZE;
