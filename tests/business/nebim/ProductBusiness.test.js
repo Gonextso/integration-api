@@ -8,6 +8,7 @@ const mockApi = {
 const mockNebimObjectHelper = {
   getDetailList: jest.fn(),
   getInventories: jest.fn(),
+  getFindInStoreByBarcode: jest.fn(),
 };
 
 const mockCoreClass = jest.fn().mockImplementation(() => ({
@@ -48,6 +49,7 @@ describe('NebimProductBusiness', () => {
             details: 'GetProductDetails',
             price: 'GetProductPrices',
             inventory: 'GetProductInventory',
+            findInStore: 'sp_GO_FindInStore',
           },
         },
       },
@@ -176,6 +178,32 @@ describe('NebimProductBusiness', () => {
       mockApi.runProc.mockRejectedValueOnce(error);
 
       await expect(business.fetchInventories(startDate)).rejects.toThrow('API Error');
+    });
+  });
+
+  describe('fetchFindInStoreByBarcodes', () => {
+    it('should call RunProc with comma-separated barcodes', async () => {
+      const barcodes = ['8600000000001', '8600000000002'];
+      const mockRows = [{ Barcode: '8600000000001', StoreName: 'Store 1', Inventory: 3 }];
+      const mockGrouped = [{ barcode: '8600000000001', stores: [{ store_name: 'Store 1' }] }];
+
+      mockApi.runProc.mockResolvedValue(mockRows);
+      mockNebimObjectHelper.getFindInStoreByBarcode.mockReturnValue(mockGrouped);
+
+      const result = await business.fetchFindInStoreByBarcodes(barcodes);
+
+      expect(mockApi.runProc).toHaveBeenCalledWith(
+        'sp_GO_FindInStore',
+        { BarcodeTypeCode: 'EAN13', Barcodes: '8600000000001,8600000000002' }
+      );
+      expect(mockNebimObjectHelper.getFindInStoreByBarcode).toHaveBeenCalledWith(mockRows);
+      expect(result).toEqual(mockGrouped);
+    });
+
+    it('should return empty array when barcodes list is empty', async () => {
+      const result = await business.fetchFindInStoreByBarcodes([]);
+      expect(result).toEqual([]);
+      expect(mockApi.runProc).not.toHaveBeenCalled();
     });
   });
 });

@@ -29,4 +29,26 @@ export default class NebimProductBusiness extends CoreClass {
 
         return NebimObjectHelper.getInventories(inventory);
     }
+
+    _buildFindInStoreProcQuery = barcodes => {
+        const barcodeTypeCode = this.tenant.nebim.product?.barcodeTypeCode ?? 'EAN13';
+        return {
+            BarcodeTypeCode: barcodeTypeCode,
+            Barcodes: barcodes.join(','),
+        };
+    }
+
+    fetchFindInStoreByBarcodes = async barcodes => {
+        if (!Array.isArray(barcodes) || barcodes.length === 0) {
+            return [];
+        }
+
+        const query = this._buildFindInStoreProcQuery(barcodes);
+        const rows = await this.api.runProc(
+            this.tenant.nebim.procNames.product.findInStore,
+            query
+        );
+
+        return NebimObjectHelper.getFindInStoreByBarcode(rows);
+    }
 }

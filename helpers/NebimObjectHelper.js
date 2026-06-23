@@ -66,6 +66,33 @@ export default class NebimObjectHelper extends CoreClass {
         quantity: x.Inventory > 0 ? x.Inventory : 0
     }));
 
+    static getFindInStoreByBarcode = rows => {
+        const grouped = new Map();
+
+        for (const row of rows ?? []) {
+            const barcode = row.Barcode;
+            if (!barcode) continue;
+
+            if (!grouped.has(barcode)) {
+                grouped.set(barcode, []);
+            }
+
+            grouped.get(barcode).push({
+                store_name: row.StoreName ?? '',
+                inventory_count: row.Inventory > 0 ? Number(row.Inventory) : 0,
+                store_geo_location: row.StoreGeoLocation ?? '',
+                store_address: row.StoreAddress ?? '',
+                store_phone: row.StorePhone ?? '',
+                store_email: row.StoreEmail ?? '',
+                store_opening_hours: row.StoreOpeningHours ?? '',
+                store_closing_hours: row.StoreClosingHours ?? '',
+                store_days_of_week: row.StoreDaysOfWeek ?? '',
+            });
+        }
+
+        return [...grouped.entries()].map(([barcode, stores]) => ({ barcode, stores }));
+    }
+
     static toNebimOrder = (tenant, order, customer) => {
         const shippingPayment = Number(order.shipping_payment ?? 0);
         const cargoItemCode = (tenant.nebim?.cargoItemCode ?? tenant.nebim?.order?.cargoItemCode ?? "").toString().trim();

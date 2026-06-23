@@ -22,4 +22,12 @@ export default new class ShopifyNebimProductController extends CoreController {
 
         return this.response(res, { status: HttpStatusCodes.ACCEPTED });
     }
+
+    syncFindInStore = async (req, res) => {
+        const productBusiness = new ProductBusiness(req.tenant);
+
+        productBusiness.syncFindInStoreNebimToShopify(req.startDate, req.endDate);
+
+        return this.response(res, { status: HttpStatusCodes.ACCEPTED });
+    }
 }

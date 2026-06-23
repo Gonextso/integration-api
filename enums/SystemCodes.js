@@ -37,6 +37,11 @@ export default class {
         SEMICOLON: ';',
         COMMA: ',',
     }
+    static FIND_IN_STORE = {
+        BARCODE_BATCH_SIZE: 140,
+        METAFIELD_NAMESPACE: 'gonextso_nebim_app',
+        METAFIELD_KEY: 'find_in_store',
+    }
     static DEFINITIONS = {
         NO_TRACKING_NUMBER: 'NO_TRACKING_NUMBER'
     }
