@@ -31,5 +31,20 @@ export default {
                 }
             }
         }
+    `,
+    set: `
+        mutation metafieldsSet($metafields: [MetafieldsSetInput!]!) {
+            metafieldsSet(metafields: $metafields) {
+                metafields {
+                    id
+                    key
+                    namespace
+                }
+                userErrors {
+                    field
+                    message
+                }
+            }
+        }
     `
 } 

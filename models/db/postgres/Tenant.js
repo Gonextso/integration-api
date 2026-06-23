@@ -456,6 +456,7 @@ class TenantModel {
           details: tenant.nebim?.procProductDetails || 'sp_GO_GetProductDetails',
           inventory: tenant.nebim?.procProductInventory || 'sp_GO_GetProductInventory',
           price: tenant.nebim?.procProductPrice || 'sp_GO_GetProductPrice',
+          findInStore: tenant.nebim?.procFindStoreInventory || 'sp_GO_FindInStore',
         },
         customer: {
           check: tenant.nebim?.procCustomerCheck || 'sp_GO_GetCustomer',

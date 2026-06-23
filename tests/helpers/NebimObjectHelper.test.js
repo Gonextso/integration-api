@@ -470,5 +470,53 @@ describe('NebimObjectHelper', () => {
       expect(result.ORDER001.tracking).toHaveProperty(SystemCodes.DEFINITIONS.NO_TRACKING_NUMBER);
     });
   });
+
+  describe('getFindInStoreByBarcode', () => {
+    it('should group rows by barcode and map store fields', () => {
+      const rows = [
+        {
+          Barcode: '8600000000001',
+          StoreName: 'X Mağazası',
+          Inventory: 100,
+          StoreGeoLocation: '45.764237, 21.240899',
+          StoreAddress: 'Address 1',
+          StorePhone: '+381 11 2400 240',
+          StoreEmail: 'info@xmagazasi.com',
+          StoreOpeningHours: '09:00 - 18:00',
+          StoreClosingHours: '13:00 - 14:00',
+          StoreDaysOfWeek: 'Monday, Tuesday',
+        },
+        {
+          Barcode: '8600000000001',
+          StoreName: 'Y Mağazası',
+          Inventory: 5,
+          StoreGeoLocation: '45.1, 21.1',
+          StoreAddress: 'Address 2',
+          StorePhone: '+381 11 1111 111',
+          StoreEmail: 'info@ymagazasi.com',
+          StoreOpeningHours: '10:00 - 19:00',
+          StoreClosingHours: '',
+          StoreDaysOfWeek: 'Monday',
+        },
+      ];
+
+      const result = NebimObjectHelper.getFindInStoreByBarcode(rows);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].barcode).toBe('8600000000001');
+      expect(result[0].stores).toHaveLength(2);
+      expect(result[0].stores[0]).toEqual({
+        store_name: 'X Mağazası',
+        inventory_count: 100,
+        store_geo_location: '45.764237, 21.240899',
+        store_address: 'Address 1',
+        store_phone: '+381 11 2400 240',
+        store_email: 'info@xmagazasi.com',
+        store_opening_hours: '09:00 - 18:00',
+        store_closing_hours: '13:00 - 14:00',
+        store_days_of_week: 'Monday, Tuesday',
+      });
+    });
+  });
 });
 
