@@ -51,4 +51,13 @@ export default class NebimProductBusiness extends CoreClass {
 
         return NebimObjectHelper.getFindInStoreByBarcode(rows);
     }
+
+    fetchStoreInfo = async () => {
+        const rows = await this.api.runProc(
+            this.tenant.nebim.procNames.product.storeInfo,
+            {}
+        );
+
+        return NebimObjectHelper.getStoreInfoList(rows);
+    }
 }

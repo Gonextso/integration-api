@@ -14,5 +14,15 @@ export default {
                 }
             }
         }
+    `,
+    shopMetafield: `
+        query shopMetafield($namespace: String!, $key: String!) {
+            shop {
+                id
+                metafield(namespace: $namespace, key: $key) {
+                    value
+                }
+            }
+        }
     `
 } 

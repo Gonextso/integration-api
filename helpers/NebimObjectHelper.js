@@ -66,6 +66,19 @@ export default class NebimObjectHelper extends CoreClass {
         quantity: x.Inventory > 0 ? x.Inventory : 0
     }));
 
+    static getStoreInfoList = rows => (rows ?? [])
+        .filter(row => row?.Desc)
+        .map(row => ({
+            desc: row.Desc ?? '',
+            geo_location: row.GeoLocation ?? '',
+            address: row.Address ?? '',
+            phone: row.Phone ?? '',
+            email: row.Email ?? '',
+            opening_hours: row.OpeningHours ?? '',
+            closing_hours: row.ClosingHours ?? '',
+            days_of_week: row.DaysOfWeek ?? '',
+        }));
+
     static getFindInStoreByBarcode = rows => {
         const grouped = new Map();
 
@@ -78,15 +91,8 @@ export default class NebimObjectHelper extends CoreClass {
             }
 
             grouped.get(barcode).push({
-                store_name: row.StoreName ?? '',
+                desc: row.StoreDesc ?? '',
                 inventory_count: row.Inventory > 0 ? Number(row.Inventory) : 0,
-                store_geo_location: row.StoreGeoLocation ?? '',
-                store_address: row.StoreAddress ?? '',
-                store_phone: row.StorePhone ?? '',
-                store_email: row.StoreEmail ?? '',
-                store_opening_hours: row.StoreOpeningHours ?? '',
-                store_closing_hours: row.StoreClosingHours ?? '',
-                store_days_of_week: row.StoreDaysOfWeek ?? '',
             });
         }
 

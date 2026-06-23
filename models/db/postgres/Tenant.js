@@ -100,6 +100,8 @@ class TenantModel {
             procProductInventory: 'sp_GO_GetProductInventory',
             procProductPrice: 'sp_GO_GetProductPrice',
             procFindStoreInventory: 'sp_GO_FindInStore',
+            procGetStoreInfo: 'sp_GO_GetStoreInfo',
+            procGetStoreInfo: 'sp_GO_GetStoreInfo',
             procCustomerCheck: 'sp_GO_GetCustomer',
             procOrderStatus: 'sp_GO_OrderStatus',
             procDefaultsAddressCodes: 'sp_GO_GetAddressList',
@@ -473,6 +475,7 @@ class TenantModel {
           inventory: tenant.nebim?.procProductInventory || 'sp_GO_GetProductInventory',
           price: tenant.nebim?.procProductPrice || 'sp_GO_GetProductPrice',
           findInStore: tenant.nebim?.procFindStoreInventory || 'sp_GO_FindInStore',
+          storeInfo: tenant.nebim?.procGetStoreInfo || 'sp_GO_GetStoreInfo',
         },
         customer: {
           check: tenant.nebim?.procCustomerCheck || 'sp_GO_GetCustomer',

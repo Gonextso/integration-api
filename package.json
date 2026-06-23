@@ -31,9 +31,10 @@
   "scripts": {
     "test": "NODE_OPTIONS=--experimental-vm-modules jest",
     "prisma:generate": "prisma generate",
-    "prisma:push": "prisma db push",
-    "prisma:setup": "npm run prisma:push && npm run prisma:generate",
+    "prisma:migrate:deploy": "prisma migrate deploy",
+    "prisma:setup": "node scripts/prisma-setup.mjs",
     "start": "node app.js",
+    "prestart": "npm run prisma:setup",
     "dev": "nodemon app.js"
   },
   "repository": {

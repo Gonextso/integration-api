@@ -10,21 +10,62 @@ export default class ShopifyFindInStoreBusiness extends CoreClass {
         super(tenant);
         this.api = new ShopifyGqlAPI(tenant);
         this.metafieldNamespace = SystemCodes.FIND_IN_STORE.METAFIELD_NAMESPACE;
-        this.metafieldKey = SystemCodes.FIND_IN_STORE.METAFIELD_KEY;
+        this.storesMetafieldKey = SystemCodes.FIND_IN_STORE.STORES_METAFIELD_KEY;
+        this.inventoryMetafieldKey = SystemCodes.FIND_IN_STORE.INVENTORY_METAFIELD_KEY;
     }
 
-    syncMetafieldsForBarcodes = async groupedResults => {
+    syncStoresMetafieldIfChanged = async stores => {
+        if (!Array.isArray(stores)) {
+            return;
+        }
+
+        await this.#ensureStoresMetafieldDefinition();
+
+        const shopData = await this.api.query(metafieldQueries.shopMetafield, {
+            namespace: this.metafieldNamespace,
+            key: this.storesMetafieldKey,
+        });
+
+        if (shopData?.errors) {
+            this.logger.error("GraphQL Errors when reading stores metafield:", JSON.stringify(shopData.errors));
+            return;
+        }
+
+        const shopId = shopData?.data?.shop?.id;
+        if (!shopId) {
+            this.logger.error("Find in store: could not resolve Shopify shop id.");
+            return;
+        }
+
+        const nextValue = this.#normalizeStoresJson(stores);
+        const currentRaw = shopData?.data?.shop?.metafield?.value;
+        const currentValue = this.#parseStoresJson(currentRaw);
+
+        if (currentValue === nextValue) {
+            this.logger.info2("Find in store: stores metafield unchanged, skipping update.");
+            return;
+        }
+
+        await this.#setMetafields([{
+            ownerId: shopId,
+            namespace: this.metafieldNamespace,
+            key: this.storesMetafieldKey,
+            type: "json",
+            value: nextValue,
+        }]);
+    }
+
+    syncVariantInventoryForBarcodes = async (groupedResults, variantMap) => {
         if (!Array.isArray(groupedResults) || groupedResults.length === 0) {
             return;
         }
 
-        const variantMap = await this.#fetchVariantMapByBarcode();
         if (!variantMap || variantMap.size === 0) {
-            this.logger.error("Find in store sync skipped: could not fetch Shopify variants.");
+            this.logger.error("Find in store sync skipped: empty variant map.");
             return;
         }
 
-        await this.#ensureMetafieldDefinition();
+        await this.#ensureInventoryMetafieldDefinition();
 
         const metafields = [];
         for (const item of groupedResults) {
@@ -37,7 +78,7 @@ export default class ShopifyFindInStoreBusiness extends CoreClass {
             metafields.push({
                 ownerId: variantId,
                 namespace: this.metafieldNamespace,
-                key: this.metafieldKey,
+                key: this.inventoryMetafieldKey,
                 type: "json",
                 value: JSON.stringify(item.stores ?? []),
             });
@@ -46,6 +87,8 @@ export default class ShopifyFindInStoreBusiness extends CoreClass {
         await this.#setMetafields(metafields);
     }
 
+    fetchVariantMapByBarcode = async () => this.#fetchVariantMapByBarcode();
+
     fetchBarcodesFromShopify = async () => {
         const variantMap = await this.#fetchVariantMapByBarcode();
         if (!variantMap) {
@@ -53,6 +96,25 @@ export default class ShopifyFindInStoreBusiness extends CoreClass {
         }
 
         return [...variantMap.keys()].filter(Boolean);
+    }
+
+    #normalizeStoresJson = stores => JSON.stringify(
+        [...stores]
+            .filter(store => store?.desc)
+            .sort((a, b) => a.desc.localeCompare(b.desc))
+    );
+
+    #parseStoresJson = rawValue => {
+        if (!rawValue) {
+            return this.#normalizeStoresJson([]);
+        }
+
+        try {
+            const parsed = JSON.parse(rawValue);
+            return this.#normalizeStoresJson(Array.isArray(parsed) ? parsed : []);
+        } catch {
+            return null;
+        }
     }
 
     #fetchVariantMapByBarcode = async () => {
@@ -96,14 +158,14 @@ export default class ShopifyFindInStoreBusiness extends CoreClass {
         return variantMap;
     }
 
-    #ensureMetafieldDefinition = async () => {
-        const metafield = `${this.metafieldNamespace}.${this.metafieldKey}`;
+    #ensureMetafieldDefinition = async (ownerType, metafieldKey, name, description) => {
+        const metafield = `${this.metafieldNamespace}.${metafieldKey}`;
         const existingData = await this.api.query(metafieldQueries.definitionsByOwnerType, {
-            ownerType: "PRODUCTVARIANT",
+            ownerType,
         });
 
         if (existingData.errors) {
-            this.logger.error("GraphQL Errors when checking find_in_store metafield definition:", JSON.stringify(existingData.errors));
+            this.logger.error(`GraphQL Errors when checking ${metafieldKey} metafield definition:`, JSON.stringify(existingData.errors));
             return;
         }
 
@@ -117,12 +179,12 @@ export default class ShopifyFindInStoreBusiness extends CoreClass {
 
         const variables = {
             definition: {
-                name: "Find in store",
+                name,
                 namespace: this.metafieldNamespace,
-                key: this.metafieldKey,
-                description: "Store-level inventory availability from Nebim",
+                key: metafieldKey,
+                description,
                 type: "json",
-                ownerType: "PRODUCTVARIANT",
+                ownerType,
                 access: { storefront: "PUBLIC_READ" },
                 pin: true,
             },
@@ -130,16 +192,34 @@ export default class ShopifyFindInStoreBusiness extends CoreClass {
 
         const createData = await this.api.query(metafieldMutations.createDefinition, variables);
         if (createData.errors) {
-            this.logger.error("GraphQL Errors when creating find_in_store metafield definition:", JSON.stringify(createData.errors));
+            this.logger.error(`GraphQL Errors when creating ${metafieldKey} metafield definition:`, JSON.stringify(createData.errors));
             return;
         }
 
         if (createData.data?.metafieldDefinitionCreate?.userErrors?.length) {
-            this.logger.error("User Errors when creating find_in_store metafield definition:", JSON.stringify(createData.data.metafieldDefinitionCreate.userErrors));
+            this.logger.error(`User Errors when creating ${metafieldKey} metafield definition:`, JSON.stringify(createData.data.metafieldDefinitionCreate.userErrors));
         }
     }
 
+    #ensureStoresMetafieldDefinition = async () => this.#ensureMetafieldDefinition(
+        "SHOP",
+        this.storesMetafieldKey,
+        "Stores",
+        "Store master data from Nebim for find in store"
+    );
+
+    #ensureInventoryMetafieldDefinition = async () => this.#ensureMetafieldDefinition(
+        "PRODUCTVARIANT",
+        this.inventoryMetafieldKey,
+        "Find in store",
+        "Per-variant store inventory from Nebim"
+    );
+
     #setMetafields = async metafields => {
+        if (!metafields.length) {
+            return;
+        }
+
         const mutation = metafieldMutations.set;
         const batchSize = 25;
 
@@ -148,7 +228,7 @@ export default class ShopifyFindInStoreBusiness extends CoreClass {
             const data = await this.api.query(mutation, { metafields: batch });
 
             if (!data) {
-                this.logger.error("Empty response while setting find_in_store metafields.");
+                this.logger.error("Empty response while setting find in store metafields.");
                 continue;
             }
 
@@ -158,7 +238,7 @@ export default class ShopifyFindInStoreBusiness extends CoreClass {
             }
 
             if (data.data?.metafieldsSet?.userErrors?.length) {
-                this.logger.error("User Errors when setting find_in_store metafields:", JSON.stringify(data.data.metafieldsSet.userErrors));
+                this.logger.error("User Errors when setting find in store metafields:", JSON.stringify(data.data.metafieldsSet.userErrors));
             }
         }
     }
