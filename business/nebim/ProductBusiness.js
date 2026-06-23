@@ -8,8 +8,13 @@ export default class NebimProductBusiness extends CoreClass {
         this.api = new NebimV3IntegratorAPI(tenant);
     }
 
+    _buildProductProcQuery = startDate => {
+        const barcodeTypeCode = this.tenant.nebim.product?.barcodeTypeCode ?? 'EAN13';
+        return { Date: startDate, BarcodeTypeCode: barcodeTypeCode };
+    }
+
     getProductDetailList = async startDate => {
-        const query = { "Date": startDate };
+        const query = this._buildProductProcQuery(startDate);
 
         const details = await this.api.runProc(this.tenant.nebim.procNames.product.details, query);
         const prices = await this.api.runProc(this.tenant.nebim.procNames.product.price, query); 
@@ -18,7 +23,7 @@ export default class NebimProductBusiness extends CoreClass {
     }
 
     fetchInventories = async startDate => {
-        const query = { "Date": startDate };
+        const query = this._buildProductProcQuery(startDate);
 
         const inventory = await this.api.runProc(this.tenant.nebim.procNames.product.inventory, query);
 

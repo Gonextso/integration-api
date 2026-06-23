@@ -91,6 +91,7 @@ class TenantModel {
             blockProductGenerationWhenOff: false,
             isCargoService: false,
             productCategoryKeysFrom: [],
+            productBarcodeTypeCode: 'EAN13',
             customerPhoneType: '7',
             customerAddressType: '1',
             customerConsentSource: 'HS_WEB',
@@ -426,6 +427,7 @@ class TenantModel {
       blockProductGenerationWhenOff: tenant.nebim?.blockProductGenerationWhenOff ?? false,
       product: {
         categoryKeysFrom: tenant.nebim?.productCategoryKeysFrom || [],
+        barcodeTypeCode: tenant.nebim?.productBarcodeTypeCode || 'EAN13',
       },
       customer: {
         phoneType: tenant.nebim?.customerPhoneType || '7',
