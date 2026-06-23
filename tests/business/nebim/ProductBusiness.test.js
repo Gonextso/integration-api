@@ -40,6 +40,9 @@ describe('NebimProductBusiness', () => {
     mockTenant = {
       _id: 'test-tenant-id',
       nebim: {
+        product: {
+          barcodeTypeCode: 'EAN13',
+        },
         procNames: {
           product: {
             details: 'GetProductDetails',
@@ -87,12 +90,12 @@ describe('NebimProductBusiness', () => {
       expect(mockApi.runProc).toHaveBeenNthCalledWith(
         1,
         'GetProductDetails',
-        { Date: startDate }
+        { Date: startDate, BarcodeTypeCode: 'EAN13' }
       );
       expect(mockApi.runProc).toHaveBeenNthCalledWith(
         2,
         'GetProductPrices',
-        { Date: startDate }
+        { Date: startDate, BarcodeTypeCode: 'EAN13' }
       );
       expect(mockNebimObjectHelper.getDetailList).toHaveBeenCalledWith(
         mockDetails,
@@ -147,7 +150,7 @@ describe('NebimProductBusiness', () => {
 
       expect(mockApi.runProc).toHaveBeenCalledWith(
         'GetProductInventory',
-        { Date: startDate }
+        { Date: startDate, BarcodeTypeCode: 'EAN13' }
       );
       expect(mockNebimObjectHelper.getInventories).toHaveBeenCalledWith(mockInventory);
       expect(result).toEqual(mockFormattedInventory);

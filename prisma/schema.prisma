@@ -102,6 +102,7 @@ model TenantNebim {
   cargoItemCode                 String?  @map("cargo_item_code")
   isCargoService                Boolean  @default(false) @map("is_cargo_service")
   productCategoryKeysFrom       String[] @map("product_category_keys_from")
+  productBarcodeTypeCode        String   @default("EAN13") @map("product_barcode_type_code")
   customerPhoneType             String   @default("7") @map("customer_phone_type")
   customerAddressType           String   @default("1") @map("customer_address_type")
   customerConfirmationFormTypeCode    String?  @map("customer_confirmation_form_type_code")
