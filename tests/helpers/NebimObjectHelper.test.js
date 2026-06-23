@@ -471,32 +471,50 @@ describe('NebimObjectHelper', () => {
     });
   });
 
+  describe('getStoreInfoList', () => {
+    it('should map Nebim store info rows to shop metafield shape', () => {
+      const rows = [
+        {
+          Desc: 'Kadıköy Mağazası',
+          GeoLocation: '40.99, 29.02',
+          Address: 'Address 1',
+          Phone: '+90 212 000 00 00',
+          Email: 'info@example.com',
+          OpeningHours: '09:00 - 18:00',
+          ClosingHours: '13:00 - 14:00',
+          DaysOfWeek: 'Monday, Tuesday',
+        },
+      ];
+
+      const result = NebimObjectHelper.getStoreInfoList(rows);
+
+      expect(result).toEqual([
+        {
+          desc: 'Kadıköy Mağazası',
+          geo_location: '40.99, 29.02',
+          address: 'Address 1',
+          phone: '+90 212 000 00 00',
+          email: 'info@example.com',
+          opening_hours: '09:00 - 18:00',
+          closing_hours: '13:00 - 14:00',
+          days_of_week: 'Monday, Tuesday',
+        },
+      ]);
+    });
+  });
+
   describe('getFindInStoreByBarcode', () => {
-    it('should group rows by barcode and map store fields', () => {
+    it('should group rows by barcode and map inventory fields', () => {
       const rows = [
         {
           Barcode: '8600000000001',
-          StoreName: 'X Mağazası',
+          StoreDesc: 'Kadıköy Mağazası',
           Inventory: 100,
-          StoreGeoLocation: '45.764237, 21.240899',
-          StoreAddress: 'Address 1',
-          StorePhone: '+381 11 2400 240',
-          StoreEmail: 'info@xmagazasi.com',
-          StoreOpeningHours: '09:00 - 18:00',
-          StoreClosingHours: '13:00 - 14:00',
-          StoreDaysOfWeek: 'Monday, Tuesday',
         },
         {
           Barcode: '8600000000001',
-          StoreName: 'Y Mağazası',
+          StoreDesc: 'Beşiktaş Mağazası',
           Inventory: 5,
-          StoreGeoLocation: '45.1, 21.1',
-          StoreAddress: 'Address 2',
-          StorePhone: '+381 11 1111 111',
-          StoreEmail: 'info@ymagazasi.com',
-          StoreOpeningHours: '10:00 - 19:00',
-          StoreClosingHours: '',
-          StoreDaysOfWeek: 'Monday',
         },
       ];
 
@@ -506,15 +524,12 @@ describe('NebimObjectHelper', () => {
       expect(result[0].barcode).toBe('8600000000001');
       expect(result[0].stores).toHaveLength(2);
       expect(result[0].stores[0]).toEqual({
-        store_name: 'X Mağazası',
+        desc: 'Kadıköy Mağazası',
         inventory_count: 100,
-        store_geo_location: '45.764237, 21.240899',
-        store_address: 'Address 1',
-        store_phone: '+381 11 2400 240',
-        store_email: 'info@xmagazasi.com',
-        store_opening_hours: '09:00 - 18:00',
-        store_closing_hours: '13:00 - 14:00',
-        store_days_of_week: 'Monday, Tuesday',
+      });
+      expect(result[0].stores[1]).toEqual({
+        desc: 'Beşiktaş Mağazası',
+        inventory_count: 5,
       });
     });
   });

@@ -9,6 +9,7 @@ const mockNebimObjectHelper = {
   getDetailList: jest.fn(),
   getInventories: jest.fn(),
   getFindInStoreByBarcode: jest.fn(),
+  getStoreInfoList: jest.fn(),
 };
 
 const mockCoreClass = jest.fn().mockImplementation(() => ({
@@ -50,6 +51,7 @@ describe('NebimProductBusiness', () => {
             price: 'GetProductPrices',
             inventory: 'GetProductInventory',
             findInStore: 'sp_GO_FindInStore',
+            storeInfo: 'sp_GO_GetStoreInfo',
           },
         },
       },
@@ -181,11 +183,27 @@ describe('NebimProductBusiness', () => {
     });
   });
 
+  describe('fetchStoreInfo', () => {
+    it('should call RunProc with empty parameters', async () => {
+      const mockRows = [{ Desc: 'Kadıköy Mağazası' }];
+      const mockStores = [{ desc: 'Kadıköy Mağazası' }];
+
+      mockApi.runProc.mockResolvedValue(mockRows);
+      mockNebimObjectHelper.getStoreInfoList.mockReturnValue(mockStores);
+
+      const result = await business.fetchStoreInfo();
+
+      expect(mockApi.runProc).toHaveBeenCalledWith('sp_GO_GetStoreInfo', {});
+      expect(mockNebimObjectHelper.getStoreInfoList).toHaveBeenCalledWith(mockRows);
+      expect(result).toEqual(mockStores);
+    });
+  });
+
   describe('fetchFindInStoreByBarcodes', () => {
     it('should call RunProc with comma-separated barcodes', async () => {
       const barcodes = ['8600000000001', '8600000000002'];
-      const mockRows = [{ Barcode: '8600000000001', StoreName: 'Store 1', Inventory: 3 }];
-      const mockGrouped = [{ barcode: '8600000000001', stores: [{ store_name: 'Store 1' }] }];
+      const mockRows = [{ Barcode: '8600000000001', StoreDesc: 'Kadıköy Mağazası', Inventory: 3 }];
+      const mockGrouped = [{ barcode: '8600000000001', stores: [{ desc: 'Kadıköy Mağazası', inventory_count: 3 }] }];
 
       mockApi.runProc.mockResolvedValue(mockRows);
       mockNebimObjectHelper.getFindInStoreByBarcode.mockReturnValue(mockGrouped);

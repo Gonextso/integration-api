@@ -61,12 +61,20 @@ export default class ProductBusiness extends CoreClass {
 
             this.logger.info2("Sync find in store started");
 
-            const barcodes = await findInStoreBusiness.fetchBarcodesFromShopify();
-            if (!barcodes.length) {
+            try {
+                const stores = await nebimProductBusiness.fetchStoreInfo();
+                await findInStoreBusiness.syncStoresMetafieldIfChanged(stores);
+            } catch (storeError) {
+                this.logger.error(new Error(`Find in store store info step failed, continuing with inventory sync: ${storeError.message}`));
+            }
+
+            const variantMap = await findInStoreBusiness.fetchVariantMapByBarcode();
+            if (!variantMap || variantMap.size === 0) {
                 this.logger.info2("Sync find in store skipped: no barcodes found on Shopify.");
                 return;
             }
 
+            const barcodes = [...variantMap.keys()];
             const chunks = [];
             for (let i = 0; i < barcodes.length; i += batchSize) {
                 chunks.push(barcodes.slice(i, i + batchSize));
@@ -75,7 +83,7 @@ export default class ProductBusiness extends CoreClass {
             const results = await Promise.allSettled(
                 chunks.map(async barcodeBatch => {
                     const grouped = await nebimProductBusiness.fetchFindInStoreByBarcodes(barcodeBatch);
-                    await findInStoreBusiness.syncMetafieldsForBarcodes(grouped);
+                    await findInStoreBusiness.syncVariantInventoryForBarcodes(grouped, variantMap);
                 })
             );
 
