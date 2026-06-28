@@ -17,6 +17,7 @@ enum ProcessType {
   SYNC_ORDERS
   SYNC_CANCEL_ORDERS
   SYNC_FAILED_ORDERS
+  SYNC_ORDER_STATUS
   TOKEN_CHECK
 
   @@schema("tenants")
@@ -255,6 +256,7 @@ model SyncBatch {
   tenant       TenantInfo         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   failedOrders SyncFailedOrder[]
   successOrders SyncSuccessOrder[]
+  logs         SyncBatchLog[]
 
   @@map("batch")
   @@schema("sync")
@@ -381,5 +383,21 @@ model SyncedBarcode {
   @@index([tenantId])
   @@index([barcode])
   @@unique([barcode, tenantId])
+}
+
+model SyncBatchLog {
+  id          String   @id @default(uuid())
+  syncBatchId String   @map("sync_batch_id")
+  level       String   // "INFO" | "WARN" | "ERROR"
+  step        String?
+  message     String   @db.Text
+  data        Json?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  syncBatch SyncBatch @relation(fields: [syncBatchId], references: [id], onDelete: Cascade)
+
+  @@map("batch_log")
+  @@schema("sync")
+  @@index([syncBatchId])
 }
 
