@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto";
 import inventoryMutations from "../../models/shopify/mutations/inventory.js";
 import inventoryQueries from "../../models/shopify/queries/inventory.js";
 import ShopifyGqlAPI from "../../apis/ShopifyGqlAPI.js";
@@ -81,8 +82,8 @@ export default class ShopifyInventoryBusiness extends CoreClass {
             if (batchQuantities.length === 0) return;
 
             const variables = {
+                idempotencyKey: randomUUID(),
                 input: {
-                    ignoreCompareQuantity: true,
                     name: "available",
                     reason: "correction",
                     quantities: batchQuantities,
@@ -119,6 +120,7 @@ export default class ShopifyInventoryBusiness extends CoreClass {
                 inventoryItemId: shopifyInventoryItem.id,
                 quantity: inventory.quantity,
                 locationId,
+                changeFromQuantity: null,
             });
 
             if (batchQuantities.length === batchSize && batchQuantities.length > 0) {

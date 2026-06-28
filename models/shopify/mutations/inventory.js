@@ -1,7 +1,7 @@
 export default {
     set: `
-mutation inventorySetQuantities($input: InventorySetQuantitiesInput!) {
-  inventorySetQuantities(input: $input) {
+mutation inventorySetQuantities($input: InventorySetQuantitiesInput!, $idempotencyKey: String!) {
+  inventorySetQuantities(input: $input) @idempotent(key: $idempotencyKey) {
     inventoryAdjustmentGroup {
       reason
       changes {
