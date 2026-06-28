@@ -211,7 +211,7 @@ export default class ShopifyFindInStoreBusiness extends CoreClass {
     #ensureInventoryMetafieldDefinition = async () => this.#ensureMetafieldDefinition(
         "PRODUCTVARIANT",
         this.inventoryMetafieldKey,
-        "Find in store",
+        "find_in_store",
         "Per-variant store inventory from Nebim"
     );
 
