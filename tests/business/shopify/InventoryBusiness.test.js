@@ -34,6 +34,30 @@ await jest.unstable_mockModule('../../../core/CoreClass.js', () => ({
 
 const { default: ShopifyInventoryBusiness } = await import('../../../business/shopify/InventoryBusiness.js');
 
+const inventorySetQuantitiesResponse = {
+  data: {
+    inventorySetQuantities: {
+      inventoryAdjustmentGroup: {
+        reason: 'correction',
+        changes: [],
+      },
+      userErrors: [],
+    },
+  },
+};
+
+const assertInventorySetPayload = (variables) => {
+  expect(variables).toHaveProperty('idempotencyKey');
+  expect(typeof variables.idempotencyKey).toBe('string');
+  expect(variables.idempotencyKey.length).toBeGreaterThan(0);
+  expect(variables.input).not.toHaveProperty('ignoreCompareQuantity');
+  expect(variables.input.name).toBe('available');
+  expect(variables.input.reason).toBe('correction');
+  for (const quantity of variables.input.quantities) {
+    expect(quantity).toHaveProperty('changeFromQuantity', null);
+  }
+};
+
 describe('ShopifyInventoryBusiness', () => {
   let business;
   let mockTenant;
@@ -64,16 +88,10 @@ describe('ShopifyInventoryBusiness', () => {
         { barcode: 'BAR002', quantity: 50 },
       ];
 
-      const mockInventoryIds = [
-        { id: 'inv1', sku: 'SKU001', barcode: 'BAR001' },
-        { id: 'inv2', sku: 'SKU002', barcode: 'BAR002' },
-      ];
-
       const mockLocations = [
         { node: { id: 'loc1', isPrimary: true } },
       ];
 
-      // Mock fetchInventoryIds responses
       mockApi.query
         .mockResolvedValueOnce({
           data: {
@@ -88,21 +106,19 @@ describe('ShopifyInventoryBusiness', () => {
             },
           },
         })
-        // Mock setInventory response
-        .mockResolvedValueOnce({
-          data: {
-            inventoryBulkAdjustQuantityAtLocation: {
-              userErrors: [],
-            },
-          },
-        });
+        .mockResolvedValueOnce(inventorySetQuantitiesResponse);
 
       mockStoreBusiness.fetchLocations.mockResolvedValue(mockLocations);
 
       await business.syncInventoryBulk(inventoryList);
 
       expect(mockStoreBusiness.fetchLocations).toHaveBeenCalled();
-      expect(mockApi.query).toHaveBeenCalled();
+      expect(mockApi.query).toHaveBeenCalledTimes(2);
+
+      const setInventoryCall = mockApi.query.mock.calls[1];
+      expect(setInventoryCall[0]).toContain('inventorySetQuantities');
+      expect(setInventoryCall[0]).toContain('@idempotent');
+      assertInventorySetPayload(setInventoryCall[1]);
     });
 
     it('should handle pagination when fetching inventory IDs', async () => {
@@ -139,19 +155,14 @@ describe('ShopifyInventoryBusiness', () => {
             },
           },
         })
-        .mockResolvedValueOnce({
-          data: {
-            inventoryBulkAdjustQuantityAtLocation: {
-              userErrors: [],
-            },
-          },
-        });
+        .mockResolvedValueOnce(inventorySetQuantitiesResponse);
 
       mockStoreBusiness.fetchLocations.mockResolvedValue(mockLocations);
 
       await business.syncInventoryBulk(inventoryList);
 
-      expect(mockApi.query).toHaveBeenCalledTimes(3); // 2 for fetch, 1 for set
+      expect(mockApi.query).toHaveBeenCalledTimes(3);
+      assertInventorySetPayload(mockApi.query.mock.calls[2][1]);
     });
 
     it('should handle GraphQL errors when fetching inventory IDs', async () => {
@@ -159,7 +170,6 @@ describe('ShopifyInventoryBusiness', () => {
         { barcode: 'BAR001', quantity: 100 },
       ];
 
-      // Mock first call to return error (fetchInventoryIds)
       mockApi.query.mockResolvedValueOnce({
         errors: [{ message: 'GraphQL Error' }],
         data: undefined,
@@ -178,7 +188,7 @@ describe('ShopifyInventoryBusiness', () => {
     it('should handle unset inventories when barcode not found', async () => {
       const inventoryList = [
         { barcode: 'BAR001', quantity: 100 },
-        { barcode: 'BAR999', quantity: 50 }, // Not found in Shopify
+        { barcode: 'BAR999', quantity: 50 },
       ];
 
       const mockLocations = [
@@ -198,21 +208,17 @@ describe('ShopifyInventoryBusiness', () => {
             },
           },
         })
-        .mockResolvedValueOnce({
-          data: {
-            inventoryBulkAdjustQuantityAtLocation: {
-              userErrors: [],
-            },
-          },
-        });
+        .mockResolvedValueOnce(inventorySetQuantitiesResponse);
 
       mockStoreBusiness.fetchLocations.mockResolvedValue(mockLocations);
 
-      const result = await business.syncInventoryBulk(inventoryList);
+      await business.syncInventoryBulk(inventoryList);
 
-      // syncInventoryBulk doesn't return a value, it's void
-      // The unSetInventories are handled internally
-      expect(mockApi.query).toHaveBeenCalled();
+      expect(mockApi.query).toHaveBeenCalledTimes(2);
+      const setInventoryVariables = mockApi.query.mock.calls[1][1];
+      assertInventorySetPayload(setInventoryVariables);
+      expect(setInventoryVariables.input.quantities).toHaveLength(1);
+      expect(setInventoryVariables.input.quantities[0].inventoryItemId).toBe('inv1');
     });
 
     it('should batch inventory updates in chunks of 250', async () => {
@@ -231,7 +237,6 @@ describe('ShopifyInventoryBusiness', () => {
         { node: { id: 'loc1', isPrimary: true } },
       ];
 
-      // Mock fetchInventoryIds
       const inventoryEdges = mockInventoryIds.map((inv, i) => ({
         node: {
           id: inv.id,
@@ -252,28 +257,20 @@ describe('ShopifyInventoryBusiness', () => {
             },
           },
         })
-        // Mock setInventory - should be called twice (250 + 50)
-        .mockResolvedValue({
-          data: {
-            inventoryBulkAdjustQuantityAtLocation: {
-              userErrors: [],
-            },
-          },
-        });
+        .mockResolvedValue(inventorySetQuantitiesResponse);
 
       mockStoreBusiness.fetchLocations.mockResolvedValue(mockLocations);
 
       await business.syncInventoryBulk(inventoryList);
 
-      // Should call setInventory multiple times for batches
-      // The exact number depends on the batch size (250)
-      expect(mockApi.query).toHaveBeenCalled();
-      // At least one call for setting inventory (after fetching)
       const setInventoryCalls = mockApi.query.mock.calls.filter(
-        call => call[0] && typeof call[0] === 'string' && call[0].includes('inventory')
+        call => call[0] && typeof call[0] === 'string' && call[0].includes('inventorySetQuantities')
       );
-      expect(setInventoryCalls.length).toBeGreaterThan(0);
+      expect(setInventoryCalls.length).toBe(2);
+      expect(setInventoryCalls[0][1].input.quantities).toHaveLength(250);
+      expect(setInventoryCalls[1][1].input.quantities).toHaveLength(50);
+      assertInventorySetPayload(setInventoryCalls[0][1]);
+      assertInventorySetPayload(setInventoryCalls[1][1]);
     });
   });
 });
-
