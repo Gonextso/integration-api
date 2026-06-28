@@ -36,7 +36,13 @@ export default new class ConfigMiddleware extends CoreController {
         }
 
         req.tenant = tenant;
-        req.tenant.shopify.decyrptedApiKey = CyrptoHelper.decrypt(tenant.shopify.apiKey);
+
+        // apiKey henüz kaydedilmemiş olabilir (yeni kurulum); decrypt patlamasın,
+        // Shopify erişimi gerektiren uçlar decryptedApiKey yokluğunu kendileri raporlar.
+        if (tenant.shopify?.apiKey) {
+            req.tenant.shopify.decyrptedApiKey = CyrptoHelper.decrypt(tenant.shopify.apiKey);
+            req.tenant.shopify.decryptedApiKey = req.tenant.shopify.decyrptedApiKey;
+        }
 
         if (tenant.shopify?.billing?.isBlocked) {
             return this.response(res, {

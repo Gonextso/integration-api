@@ -25,7 +25,9 @@ export default class ShopifyObjectHelper extends CoreClass {
                 quantity: y.refundableQuantity,
                 remaining_quantity: y.nonFulfillableQuantity,
                 line_discount: Number(y.totalDiscount ?? 0),
+                line_discount_presentment: Number(y.totalDiscountSet?.presentmentMoney?.amount ?? y.totalDiscount ?? 0),
                 price: Number(y.originalUnitPrice),
+                price_presentment: Number(y.originalUnitPriceSet?.presentmentMoney?.amount ?? y.originalUnitPrice),
                 line_id: fulfillmentLineMap.get(y.variant?.barcode ?? null) ?? null,
             }));
         }
@@ -45,9 +47,14 @@ export default class ShopifyObjectHelper extends CoreClass {
             return {
                 order_id: `${x.name}.${x.id}`,
                 order_date: new Date(x.createdAt).toISOString().split('T')[0],
-                last_discount: x.totalDiscounts - x.lineItems.nodes.reduce((x, y) => (Number(x.totalDiscount ?? 0) + Number(y.totalDiscount ?? 0)), 0),
+                last_discount: x.totalDiscounts - x.lineItems.nodes.reduce((sum, y) => sum + Number(y.totalDiscount ?? 0), 0),
+                last_discount_presentment: Number(x.totalDiscountsSet?.presentmentMoney?.amount ?? x.totalDiscounts) - x.lineItems.nodes.reduce((sum, y) => sum + Number(y.totalDiscountSet?.presentmentMoney?.amount ?? y.totalDiscount ?? 0), 0),
                 payment: Number(x.netPayment),
+                payment_presentment: Number(x.netPaymentSet?.presentmentMoney?.amount ?? x.netPayment),
                 shipping_payment: Number(x.totalShippingPriceSet?.shopMoney?.amount ?? 0),
+                shipping_payment_presentment: Number(x.totalShippingPriceSet?.presentmentMoney?.amount ?? 0),
+                currency: x.currencyCode,
+                market_currency: x.presentmentCurrencyCode ?? x.currencyCode,
                 is_receiver_not_customer: x.shippingAddress.name ? x.customer.displayName !== x.shippingAddress.name : false,
                 is_cancelled: Boolean(x.cancelReason),
                 customer: {
@@ -71,7 +78,7 @@ export default class ShopifyObjectHelper extends CoreClass {
                     first_name: x.shippingAddress.firstName,
                     last_name: x.shippingAddress.lastName,
                     address_text: x.shippingAddress.address1,
-                    country: 'TR', //TODO: implement abroad in feature
+                    country: x.shippingAddress?.countryCodeV2 ?? null,
                     city: x.shippingAddress.city,
                     district: x.shippingAddress.address2,
                 },

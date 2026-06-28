@@ -13,7 +13,10 @@ export default class {
         SYNC_ORDER_STATUS: 'SYNC_ORDER_STATUS',
         TOKEN_CHECK: 'TOKEN_CHECK',
         SYNC_PRODUCTS: 'SYNC_PRODUCTS',
-        SYNC_FAILED_PRODUCTS: 'SYNC_FAILED_PRODUCTS'
+        SYNC_FAILED_PRODUCTS: 'SYNC_FAILED_PRODUCTS',
+        SYNC_MARKET_PRICES: 'SYNC_MARKET_PRICES',
+        SYNC_MARKET_CONTENT: 'SYNC_MARKET_CONTENT',
+        SETUP_TEST_ORDER: 'SETUP_TEST_ORDER'
     }
     static NEBIM_ORDER_STATUS = {
         ON_CARGO: 'ON-CARGO',
@@ -44,6 +47,14 @@ export default class {
         STORES_METAFIELD_KEY: 'stores',
         INVENTORY_METAFIELD_KEY: 'find_in_store',
     }
+    static MARKET_SYNC = {
+        // priceListFixedPricesAdd accepts up to 250 prices per call.
+        PRICE_BATCH_SIZE: 250,
+        // translationsRegister accepts up to 250 translations per call.
+        TRANSLATION_BATCH_SIZE: 250,
+        // How many Shopify variant ids to resolve from SyncedBarcode per query chunk.
+        BARCODE_LOOKUP_CHUNK: 200,
+    }
     static DEFINITIONS = {
         NO_TRACKING_NUMBER: 'NO_TRACKING_NUMBER'
     }
@@ -57,10 +68,9 @@ export default class {
     static BILLING_PLANS = {
         BASIC: {
             KEY: 'BASIC',
-            TOKEN_LIMIT: 5,
             LIMITS: {
-                ORDER: 10,
-                PRODUCT_DETAILS: 500
+                ORDER: 5,
+                PRODUCT_DETAILS: 100
             },
             REDENTION: {
                 LOG: 1
@@ -68,29 +78,16 @@ export default class {
         },
         COMMUNITY: {
             KEY: 'COMMUNITY',
-            TOKEN_LIMIT: 500,
             LIMITS: {
-                ORDER: 30,
-                PRODUCT_DETAILS: 1000
+                ORDER: 50,
+                PRODUCT_DETAILS: 5000
             },
             REDENTION: {
                 LOG: 5
             }
         },
-        PRO: {
-            KEY: 'PRO',
-            TOKEN_LIMIT: 1500,
-            LIMITS: {
-                ORDER: 100,
-                PRODUCT_DETAILS: 5000
-            },
-            REDENTION: {
-                LOG: 10
-            }
-        },
         ENTERPRISE: {
             KEY: 'ENTERPRISE',
-            TOKEN_LIMIT: 0,
             LIMITS: {
                 ORDER: 0,
                 PRODUCT_DETAILS: 0

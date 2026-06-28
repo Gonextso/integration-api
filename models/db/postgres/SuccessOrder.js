@@ -58,6 +58,23 @@ class SuccessOrderModel {
   }
 
   /**
+   * Count success orders by query
+   */
+  async count(query = {}) {
+    try {
+      const where = this._buildWhereClause(query);
+      return await prisma.syncSuccessOrder.count({ where });
+    } catch (error) {
+      // P2021: Table does not exist - return 0 instead of crashing
+      if (error.code === 'P2021') {
+        console.warn(`[SuccessOrder] Table does not exist: ${error.meta?.table || 'unknown'}. Returning 0 for count.`);
+        return 0;
+      }
+      throw error;
+    }
+  }
+
+  /**
    * Create success order
    */
   async create(data) {
@@ -176,8 +193,18 @@ class SuccessOrderModel {
       where.traceId = query.traceId;
     }
 
-    // Date queries are handled in find() method after Prisma query
-    // Prisma supports date comparison but MongoDB $lte/$gte operators need special handling
+    // Translate MongoDB date operators to native Prisma filters.
+    // find() also re-applies these in JS for backward compatibility.
+    if (query.createdAt && typeof query.createdAt === 'object') {
+      const createdAt = {};
+      if (query.createdAt.$lte !== undefined) createdAt.lte = new Date(query.createdAt.$lte);
+      if (query.createdAt.$gte !== undefined) createdAt.gte = new Date(query.createdAt.$gte);
+      if (query.createdAt.$lt !== undefined) createdAt.lt = new Date(query.createdAt.$lt);
+      if (query.createdAt.$gt !== undefined) createdAt.gt = new Date(query.createdAt.$gt);
+      if (Object.keys(createdAt).length > 0) {
+        where.createdAt = createdAt;
+      }
+    }
 
     return where;
   }

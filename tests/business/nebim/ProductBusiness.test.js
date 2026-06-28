@@ -45,6 +45,9 @@ describe('NebimProductBusiness', () => {
         product: {
           barcodeTypeCode: 'EAN13',
         },
+        order: {
+          store: 'WEB_STORE',
+        },
         procNames: {
           product: {
             details: 'GetProductDetails',
@@ -65,6 +68,94 @@ describe('NebimProductBusiness', () => {
 
   afterEach(() => {
     jest.clearAllMocks();
+  });
+
+  describe('sync proc query wiring', () => {
+    it('should map all tenant product settings to details and price procs (product sync)', async () => {
+      const startDate = '2024-06-15T08:00:00.000Z';
+      mockTenant.nebim.product = {
+        barcodeTypeCode: 'CODE128',
+        priceSellCode: 'PSF',
+        priceCompareCode: 'LSF',
+        isColorBased: true,
+        useInternetOnVariant: true,
+        usedSeparatorOnColorAndItem: '/',
+        usedSeparatorOnColorAndItemDescriptions: ':',
+      };
+      business = new NebimProductBusiness(mockTenant);
+      business.tenant = mockTenant;
+      business.api = mockApi;
+
+      mockApi.runProc
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([]);
+      mockNebimObjectHelper.getDetailList.mockReturnValue([]);
+
+      await business.getProductDetailList(startDate);
+
+      expect(mockApi.runProc).toHaveBeenNthCalledWith(
+        1,
+        'GetProductDetails',
+        {
+          Date: startDate,
+          BarcodeTypeCode: 'CODE128',
+          IsColorBased: 1,
+          UseInternetOnVariant: 1,
+          UsedSeparatorOnColorAndItem: '/',
+          UsedSeparatorOnColorAndItemDescriptions: ':',
+        },
+      );
+      expect(mockApi.runProc).toHaveBeenNthCalledWith(
+        2,
+        'GetProductPrices',
+        {
+          Date: startDate,
+          BarcodeTypeCode: 'CODE128',
+          SalePriceGroupCode: 'PSF',
+          PriceGroupCode: 'LSF',
+        },
+      );
+    });
+
+    it('should map tenant inventory settings to inventory proc (inventory sync)', async () => {
+      const startDate = '2024-06-15T08:00:00.000Z';
+      mockTenant.nebim.product = {
+        barcodeTypeCode: 'CODE128',
+        responsibilityAreaCode: 'ECOM',
+      };
+      mockTenant.nebim.order = { store: 'MAG01' };
+      business = new NebimProductBusiness(mockTenant);
+      business.tenant = mockTenant;
+      business.api = mockApi;
+
+      mockApi.runProc.mockResolvedValue([]);
+      mockNebimObjectHelper.getInventories.mockReturnValue([]);
+
+      await business.fetchInventories(startDate);
+
+      expect(mockApi.runProc).toHaveBeenCalledWith(
+        'GetProductInventory',
+        {
+          Date: startDate,
+          BarcodeTypeCode: 'CODE128',
+          OrderStoreCode: 'MAG01',
+          ResponsibiltyAreaCode: 'ECOM',
+        },
+      );
+    });
+
+    it('should forward startDate unchanged; date filtering is handled by the Nebim proc', async () => {
+      const startDate = '2023-01-01T00:00:00.000Z';
+      mockApi.runProc
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([]);
+      mockNebimObjectHelper.getDetailList.mockReturnValue([]);
+
+      await business.getProductDetailList(startDate);
+
+      expect(mockApi.runProc.mock.calls[0][1].Date).toBe(startDate);
+      expect(mockApi.runProc.mock.calls[1][1].Date).toBe(startDate);
+    });
   });
 
   describe('getProductDetailList', () => {
@@ -94,7 +185,14 @@ describe('NebimProductBusiness', () => {
       expect(mockApi.runProc).toHaveBeenNthCalledWith(
         1,
         'GetProductDetails',
-        { Date: startDate, BarcodeTypeCode: 'EAN13' }
+        {
+          Date: startDate,
+          BarcodeTypeCode: 'EAN13',
+          IsColorBased: 0,
+          UseInternetOnVariant: 0,
+          UsedSeparatorOnColorAndItem: '-',
+          UsedSeparatorOnColorAndItemDescriptions: ' ',
+        }
       );
       expect(mockApi.runProc).toHaveBeenNthCalledWith(
         2,
@@ -107,6 +205,74 @@ describe('NebimProductBusiness', () => {
         mockTenant
       );
       expect(result).toEqual(mockFormattedList);
+    });
+
+    it('should pass price group codes to price proc when configured', async () => {
+      mockTenant.nebim.product.priceSellCode = 'PSF';
+      mockTenant.nebim.product.priceCompareCode = 'LSF';
+      business.tenant = mockTenant;
+
+      const startDate = '2024-01-01';
+      mockApi.runProc
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([]);
+      mockNebimObjectHelper.getDetailList.mockReturnValue([]);
+
+      await business.getProductDetailList(startDate);
+
+      expect(mockApi.runProc).toHaveBeenNthCalledWith(
+        1,
+        'GetProductDetails',
+        {
+          Date: startDate,
+          BarcodeTypeCode: 'EAN13',
+          IsColorBased: 0,
+          UseInternetOnVariant: 0,
+          UsedSeparatorOnColorAndItem: '-',
+          UsedSeparatorOnColorAndItemDescriptions: ' ',
+        }
+      );
+      expect(mockApi.runProc).toHaveBeenNthCalledWith(
+        2,
+        'GetProductPrices',
+        {
+          Date: startDate,
+          BarcodeTypeCode: 'EAN13',
+          SalePriceGroupCode: 'PSF',
+          PriceGroupCode: 'LSF',
+        }
+      );
+    });
+
+    it('should pass color-based settings to details proc when configured', async () => {
+      mockTenant.nebim.product.isColorBased = true;
+      mockTenant.nebim.product.useInternetOnVariant = true;
+      mockTenant.nebim.product.usedSeparatorOnColorAndItem = '_';
+      mockTenant.nebim.product.usedSeparatorOnColorAndItemDescriptions = '|';
+      business = new NebimProductBusiness(mockTenant);
+      business.tenant = mockTenant;
+      business.api = mockApi;
+
+      const startDate = '2024-01-01';
+      mockApi.runProc
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([]);
+      mockNebimObjectHelper.getDetailList.mockReturnValue([]);
+
+      await business.getProductDetailList(startDate);
+
+      expect(mockApi.runProc).toHaveBeenNthCalledWith(
+        1,
+        'GetProductDetails',
+        {
+          Date: startDate,
+          BarcodeTypeCode: 'EAN13',
+          IsColorBased: 1,
+          UseInternetOnVariant: 1,
+          UsedSeparatorOnColorAndItem: '_',
+          UsedSeparatorOnColorAndItemDescriptions: '|',
+        },
+      );
     });
 
     it('should handle empty results', async () => {
@@ -154,10 +320,27 @@ describe('NebimProductBusiness', () => {
 
       expect(mockApi.runProc).toHaveBeenCalledWith(
         'GetProductInventory',
-        { Date: startDate, BarcodeTypeCode: 'EAN13' }
+        { Date: startDate, BarcodeTypeCode: 'EAN13', OrderStoreCode: 'WEB_STORE', ResponsibiltyAreaCode: 'WEB' }
       );
       expect(mockNebimObjectHelper.getInventories).toHaveBeenCalledWith(mockInventory);
       expect(result).toEqual(mockFormattedInventory);
+    });
+
+    it('should pass configured responsibility area code to inventory proc', async () => {
+      mockTenant.nebim.product.responsibilityAreaCode = 'ECOM';
+      business = new NebimProductBusiness(mockTenant);
+      business.tenant = mockTenant;
+      business.api = mockApi;
+
+      mockApi.runProc.mockResolvedValue([]);
+      mockNebimObjectHelper.getInventories.mockReturnValue([]);
+
+      await business.fetchInventories('2024-01-01');
+
+      expect(mockApi.runProc).toHaveBeenCalledWith(
+        'GetProductInventory',
+        expect.objectContaining({ ResponsibiltyAreaCode: 'ECOM' }),
+      );
     });
 
     it('should handle empty inventory', async () => {
@@ -222,6 +405,44 @@ describe('NebimProductBusiness', () => {
       const result = await business.fetchFindInStoreByBarcodes([]);
       expect(result).toEqual([]);
       expect(mockApi.runProc).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getProductDetailListByItemCode', () => {
+    it('should pass ItemCode to details and price procs', async () => {
+      mockApi.runProc
+        .mockResolvedValueOnce([{ ItemCode: 'ABC' }])
+        .mockResolvedValueOnce([{ Barcode: '8600001' }]);
+      mockNebimObjectHelper.getDetailList.mockReturnValue([{ erp_id: 'ABC' }]);
+
+      const result = await business.getProductDetailListByItemCode('ABC');
+
+      expect(mockApi.runProc).toHaveBeenNthCalledWith(
+        1,
+        'GetProductDetails',
+        expect.objectContaining({ ItemCode: 'ABC' }),
+      );
+      expect(mockApi.runProc).toHaveBeenNthCalledWith(
+        2,
+        'GetProductPrices',
+        expect.objectContaining({ ItemCode: 'ABC' }),
+      );
+      expect(result).toEqual([{ erp_id: 'ABC' }]);
+    });
+  });
+
+  describe('fetchInventoriesByItemCode', () => {
+    it('should pass ItemCode to inventory proc', async () => {
+      mockApi.runProc.mockResolvedValue([{ Barcode: '8600001', Inventory: 2 }]);
+      mockNebimObjectHelper.getInventories.mockReturnValue([{ barcode: '8600001', quantity: 2 }]);
+
+      const result = await business.fetchInventoriesByItemCode('ABC');
+
+      expect(mockApi.runProc).toHaveBeenCalledWith(
+        'GetProductInventory',
+        expect.objectContaining({ ItemCode: 'ABC' }),
+      );
+      expect(result).toEqual([{ barcode: '8600001', quantity: 2 }]);
     });
   });
 });

@@ -34,7 +34,6 @@ const mockSystemHelper = {
 
 const mockLimitBusiness = {
   checkLimitAvailability: jest.fn(),
-  useLimit: jest.fn(),
 };
 
 const mockLimitBusinessClass = jest.fn().mockImplementation(() => mockLimitBusiness);
@@ -87,15 +86,15 @@ await jest.unstable_mockModule('../../../business/LimitBusiness.js', () => ({
   default: mockLimitBusinessClass,
 }));
 
-await jest.unstable_mockModule('../../../models/db/FailedOrder.js', () => ({
+await jest.unstable_mockModule('../../../models/db/postgres/FailedOrder.js', () => ({
   default: mockFailedOrder,
 }));
 
-await jest.unstable_mockModule('../../../models/db/SuccessOrder.js', () => ({
+await jest.unstable_mockModule('../../../models/db/postgres/SuccessOrder.js', () => ({
   default: mockSuccessOrder,
 }));
 
-await jest.unstable_mockModule('../../../models/db/Tenant.js', () => ({
+await jest.unstable_mockModule('../../../models/db/postgres/Tenant.js', () => ({
   default: mockTenantModel,
 }));
 
@@ -235,7 +234,6 @@ describe('NebimOrderBusiness', () => {
       mockCustomerBusiness.syncCustomerFromOrder.mockResolvedValue(mockCustomer);
       mockNebimObjectHelper.toNebimOrder.mockReturnValue({ ModelType: 1 });
       mockApi.post.mockResolvedValue(mockOrderResponse);
-      mockLimitBusiness.useLimit.mockResolvedValue(undefined);
       mockSystemHelper.createTransaction.mockImplementation(async (tenant, id, work) => {
         return await work();
       });
@@ -246,6 +244,91 @@ describe('NebimOrderBusiness', () => {
       expect(result.failedOrders).toHaveLength(0);
       expect(result.skippedFailedOrderCount).toBe(0);
       expect(result.skippedAlreadySyncedOrders).toBe(0);
+    });
+
+    it('should grow the limit check amount with in-batch successes', async () => {
+      const buildOrder = orderId => ({
+        order_id: orderId,
+        is_cancelled: false,
+        platform: 'SHOPIFY',
+        lines: [{ barcode: 'BAR001', quantity: 1, remaining_quantity: 0 }],
+      });
+      const orderList = [buildOrder('ORD001'), buildOrder('ORD002')];
+
+      mockFailedOrder.findOne.mockResolvedValue(null);
+      mockSuccessOrder.findOne.mockResolvedValue(null);
+      mockLimitBusiness.checkLimitAvailability.mockResolvedValue(undefined);
+      mockCustomerBusiness.syncCustomerFromOrder.mockResolvedValue({ CustomerCode: 'CUST001' });
+      mockNebimObjectHelper.toNebimOrder.mockReturnValue({ ModelType: 1 });
+      mockApi.post.mockResolvedValue({
+        OrderNumber: 'NEBIM001',
+        Lines: [{ LineID: 'LINE001', Qty1: 1, UsedBarcode: 'BAR001', LineAmount: 100 }],
+      });
+      mockSystemHelper.createTransaction.mockImplementation(async (tenant, id, work) => work());
+
+      const result = await business.createOrders(orderList);
+
+      expect(result.successOrders).toHaveLength(2);
+      // SuccessOrder rows are persisted after the batch, so the second check
+      // must account for the first in-batch success.
+      expect(mockLimitBusiness.checkLimitAvailability).toHaveBeenNthCalledWith(1, SystemCodes.LIMIT_TYPE.ORDER, 1);
+      expect(mockLimitBusiness.checkLimitAvailability).toHaveBeenNthCalledWith(2, SystemCodes.LIMIT_TYPE.ORDER, 2);
+    });
+
+    it('should return TOKEN_CHECK failed order when limit is exceeded', async () => {
+      const orderList = [
+        {
+          order_id: 'ORD001',
+          is_cancelled: false,
+          platform: 'SHOPIFY',
+          lines: [{ barcode: 'BAR001', quantity: 1, remaining_quantity: 0 }],
+        },
+      ];
+
+      mockFailedOrder.findOne.mockResolvedValue(null);
+      mockSuccessOrder.findOne.mockResolvedValue(null);
+      mockLimitBusiness.checkLimitAvailability.mockRejectedValue(new Error('Limit exceed'));
+      mockSystemHelper.createTransaction.mockImplementation(async (tenant, id, work) => work());
+
+      const result = await business.createOrders(orderList);
+
+      expect(result.successOrders).toHaveLength(0);
+      expect(result.failedOrders).toHaveLength(1);
+      expect(result.failedOrders[0]).toMatchObject({
+        ok: false,
+        reason: 'Limit exceed',
+        ecommerceId: 'ORD001',
+        process: SystemCodes.PROCESS.TOKEN_CHECK,
+      });
+      expect(mockCustomerBusiness.syncCustomerFromOrder).not.toHaveBeenCalled();
+    });
+
+    it('should not check or charge limits for ENTERPRISE plan', async () => {
+      mockTenant.shopify.billing.planKey = SystemCodes.BILLING_PLANS.ENTERPRISE.KEY;
+
+      const orderList = [
+        {
+          order_id: 'ORD001',
+          is_cancelled: false,
+          platform: 'SHOPIFY',
+          lines: [{ barcode: 'BAR001', quantity: 1, remaining_quantity: 0 }],
+        },
+      ];
+
+      mockFailedOrder.findOne.mockResolvedValue(null);
+      mockSuccessOrder.findOne.mockResolvedValue(null);
+      mockCustomerBusiness.syncCustomerFromOrder.mockResolvedValue({ CustomerCode: 'CUST001' });
+      mockNebimObjectHelper.toNebimOrder.mockReturnValue({ ModelType: 1 });
+      mockApi.post.mockResolvedValue({
+        OrderNumber: 'NEBIM001',
+        Lines: [{ LineID: 'LINE001', Qty1: 1, UsedBarcode: 'BAR001', LineAmount: 100 }],
+      });
+      mockSystemHelper.createTransaction.mockImplementation(async (tenant, id, work) => work());
+
+      const result = await business.createOrders(orderList);
+
+      expect(result.successOrders).toHaveLength(1);
+      expect(mockLimitBusiness.checkLimitAvailability).not.toHaveBeenCalled();
     });
 
     it('should skip already synced orders', async () => {
@@ -322,7 +405,6 @@ describe('NebimOrderBusiness', () => {
       mockCustomerBusiness.syncCustomerFromOrder.mockResolvedValue(mockCustomer);
       mockNebimObjectHelper.toNebimOrder.mockReturnValue({ ModelType: 1 });
       mockApi.post.mockResolvedValue(mockOrderResponse);
-      mockLimitBusiness.useLimit.mockResolvedValue(undefined);
       mockSystemHelper.createTransaction.mockImplementation(async (tenant, id, work) => {
         return await work();
       });
@@ -422,7 +504,6 @@ describe('NebimOrderBusiness', () => {
         OrderNumber: 'ORD002',
         Lines: [],
       });
-      mockLimitBusiness.useLimit.mockResolvedValue(undefined);
       mockSystemHelper.createTransaction.mockImplementation(async (tenant, id, work) => {
         return await work();
       });

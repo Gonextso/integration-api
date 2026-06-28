@@ -4,6 +4,43 @@ import StringHelper from "./StringHelper.js";
 import RequestLog from "../models/db/postgres/RequestLog.js";
 import CLSHelper from "./CLSHelper.js";
 
+const SKIP_STACK_PATTERNS = ['WebRequestHelper', 'node:internal', 'node:async_hooks'];
+
+export function resolveBusinessLayerFromStack(stack) {
+    if (!stack) return 'unknown';
+
+    const lines = stack.split('\n');
+    let controllerMatch = null;
+    let apiMatch = null;
+
+    for (const line of lines) {
+        if (!line || SKIP_STACK_PATTERNS.some((pattern) => line.includes(pattern))) continue;
+        if (line.includes('CoreAPI.js')) continue;
+
+        const businessFolderMatch = line.match(/business\/(nebim|shopify)\/(\w+)\.js/);
+        if (businessFolderMatch) {
+            return `${businessFolderMatch[1]}.${businessFolderMatch[2]}`;
+        }
+
+        const rootBusinessMatch = line.match(/business\/(\w+Business)\.js/);
+        if (rootBusinessMatch) {
+            return rootBusinessMatch[1];
+        }
+
+        if (!controllerMatch) {
+            const controller = line.match(/controllers\/(\w+)\.js/);
+            if (controller) controllerMatch = `controller.${controller[1]}`;
+        }
+
+        if (!apiMatch) {
+            const api = line.match(/apis\/(\w+)\.js/);
+            if (api) apiMatch = `api.${api[1]}`;
+        }
+    }
+
+    return controllerMatch || apiMatch || 'unknown';
+}
+
 export default class WebRequestHelper extends CoreClass {
     constructor(tenant) {
         super(tenant);
@@ -116,6 +153,7 @@ export default class WebRequestHelper extends CoreClass {
         };
 
         const caller = getCallerInfo();
+        const businessLayer = resolveBusinessLayerFromStack(new Error().stack);
 
         const logData = {
             tenant: this.tenant.id || this.tenant._id,
@@ -129,7 +167,8 @@ export default class WebRequestHelper extends CoreClass {
             response: null,
             url: args[0],
             headers: args[2] && args[2].headers ? JSON.stringify(this.#removeSecrets(args[2].headers)) : "",
-            body: JSON.stringify(args[1])
+            body: JSON.stringify(args[1]),
+            businessLayer,
         };
         
         let log = null;

@@ -3,12 +3,16 @@ import { jest, describe, it, expect, beforeEach, afterEach } from '@jest/globals
 // Mock dependencies before imports
 const mockApi = {
   runProcReturnSingle: jest.fn(),
+  runProc: jest.fn(),
   getModel: jest.fn(),
   post: jest.fn(),
 };
 
 const mockCache = {
   findAddressCode: jest.fn(),
+  get: jest.fn(),
+  set: jest.fn(),
+  getFirstAddressRow: jest.fn(),
 };
 
 const mockNebimCache = jest.fn().mockImplementation(() => mockCache);
@@ -49,6 +53,9 @@ describe('NebimCustomerBusiness', () => {
         procNames: {
           customer: {
             check: 'CheckCustomer',
+          },
+          defaults: {
+            addressCodes: 'GetAddressCodes',
           },
         },
         customer: {
@@ -363,6 +370,94 @@ describe('NebimCustomerBusiness', () => {
       mockCache.findAddressCode.mockResolvedValue(null);
 
       await expect(business.syncCustomerFromOrder(order)).rejects.toThrow();
+    });
+  });
+
+  describe('createSetupTestCustomer', () => {
+    const firstAddressRow = {
+      CountryCode: 'TR',
+      StateCode: '01',
+      CityCode: '01',
+      DistrictCode: '0101',
+      CityDescription: 'Adana',
+      DistrictDescription: 'Seyhan',
+    };
+
+    it('should always create a new setup test customer without lookup', async () => {
+      mockCache.get.mockResolvedValue([]);
+      mockApi.runProc.mockResolvedValue([firstAddressRow]);
+      mockCache.getFirstAddressRow.mockResolvedValue(firstAddressRow);
+      mockCache.findAddressCode.mockResolvedValue({
+        CountryCode: 'TR',
+        StateCode: '01',
+        CityCode: '01',
+        DistrictCode: '0101',
+      });
+      mockApi.post.mockResolvedValue({
+        CurrAccCode: '1-4-1',
+        PostalAddresses: [{ PostalAddressID: 'ADDR001' }],
+      });
+
+      const result = await business.createSetupTestCustomer();
+
+      expect(mockApi.runProcReturnSingle).not.toHaveBeenCalled();
+      expect(mockApi.getModel).not.toHaveBeenCalled();
+      expect(mockApi.post).toHaveBeenCalled();
+      expect(result).toEqual({ CustomerCode: '1-4-1' });
+    });
+
+    it('should cache address codes and create setup test customer', async () => {
+      mockCache.get.mockResolvedValue([]);
+      mockApi.runProc.mockResolvedValue([firstAddressRow]);
+      mockCache.getFirstAddressRow.mockResolvedValue(firstAddressRow);
+      mockCache.findAddressCode.mockResolvedValue({
+        CountryCode: 'TR',
+        StateCode: '01',
+        CityCode: '01',
+        DistrictCode: '0101',
+      });
+      mockApi.post.mockResolvedValue({
+        CurrAccCode: '1-4-2',
+        PostalAddresses: [{ PostalAddressID: 'ADDR001' }],
+      });
+
+      const result = await business.createSetupTestCustomer();
+
+      expect(mockApi.runProc).toHaveBeenCalledWith('GetAddressCodes');
+      expect(mockCache.set).toHaveBeenCalledWith('AddressCodes', [firstAddressRow]);
+      expect(mockApi.post).toHaveBeenCalled();
+      expect(result).toEqual({
+        CustomerCode: '1-4-2',
+      });
+    });
+
+    it('should use cached address codes when already populated', async () => {
+      mockCache.get.mockResolvedValue([firstAddressRow]);
+      mockCache.getFirstAddressRow.mockResolvedValue(firstAddressRow);
+      mockCache.findAddressCode.mockResolvedValue({
+        CountryCode: 'TR',
+        StateCode: '01',
+        CityCode: '01',
+        DistrictCode: '0101',
+      });
+      mockApi.post.mockResolvedValue({
+        CurrAccCode: '1-4-3',
+        PostalAddresses: [{ PostalAddressID: 'ADDR002' }],
+      });
+
+      await business.createSetupTestCustomer();
+
+      expect(mockApi.runProc).not.toHaveBeenCalled();
+      expect(mockCache.set).not.toHaveBeenCalled();
+    });
+
+    it('should throw when address codes cache stays empty', async () => {
+      mockCache.get.mockResolvedValue([]);
+      mockApi.runProc.mockResolvedValue([]);
+
+      await expect(business.createSetupTestCustomer()).rejects.toThrow(
+        'Address codes cache is empty',
+      );
     });
   });
 });

@@ -6,6 +6,7 @@ export default class ProductDetail extends CoreModel {
         super({
             erp_id: "",
             title: "",
+            description: "",
             tax_rate: "",
             is_blocked_by_erp: false,
             attributes: [],

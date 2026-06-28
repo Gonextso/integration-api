@@ -76,6 +76,54 @@ describe('NebimCache', () => {
     jest.clearAllMocks();
   });
 
+  describe('getFirstAddressRow', () => {
+    it('should return first row with city and district codes', async () => {
+      const allAddressCodes = [
+        { CityCode: '', DistrictCode: '', CityDescription: 'Invalid' },
+        {
+          CityCode: '01',
+          DistrictCode: '0101',
+          CityDescription: 'Adana',
+          DistrictDescription: 'Seyhan',
+        },
+        {
+          CityCode: '34',
+          DistrictCode: '3401',
+          CityDescription: 'Istanbul',
+          DistrictDescription: 'Kadikoy',
+        },
+      ];
+
+      cache.get.mockResolvedValue(allAddressCodes);
+
+      const result = await cache.getFirstAddressRow();
+
+      expect(cache.get).toHaveBeenCalledWith(CacheFields.NEBIM.ADDRESS_CODES);
+      expect(result).toEqual(allAddressCodes[1]);
+    });
+
+    it('should throw when cache is empty', async () => {
+      cache.get.mockResolvedValue([]);
+      cache.throws = jest.fn((message) => {
+        throw new Error(message);
+      });
+
+      await expect(cache.getFirstAddressRow()).rejects.toThrow('Address codes cache is empty');
+    });
+
+    it('should throw when no row has valid codes', async () => {
+      cache.get.mockResolvedValue([
+        { CityCode: '', DistrictCode: '0101' },
+        { CityCode: '01', DistrictCode: '' },
+      ]);
+      cache.throws = jest.fn((message) => {
+        throw new Error(message);
+      });
+
+      await expect(cache.getFirstAddressRow()).rejects.toThrow('Address codes cache is empty');
+    });
+  });
+
   describe('findAddressCode', () => {
     it('should find address code by city and district', async () => {
       const city = 'Istanbul';

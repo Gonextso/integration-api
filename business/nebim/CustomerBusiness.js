@@ -1,6 +1,13 @@
 import CoreClass from "../../core/CoreClass.js";
 import NebimV3IntegratorAPI from "../../apis/NebimV3IntegratorAPI.js";
 import NebimCache from "../../cache/NebimCache.js";
+import CacheFields from "../../enums/CacheFields.js";
+
+const SETUP_TEST_EMAIL = "support@gonextso.com";
+const SETUP_TEST_PHONE = "05555555555";
+const SETUP_TEST_FIRST_NAME = "Gonextso";
+const SETUP_TEST_LAST_NAME = "Test Müşteri";
+const SETUP_TEST_ADDRESS_TEXT = "Bu bir test adresidir";
 
 export default class NebimCustomerClass extends CoreClass {
     constructor(tenant) {
@@ -26,6 +33,52 @@ export default class NebimCustomerClass extends CoreClass {
 
         if (nebimCustomer) return this.#updateCustomer(nebimCustomer, order);
         return this.#createCustomer(order);
+    }
+
+    createSetupTestCustomer = async () => {
+        await this.#ensureAddressCodesCached();
+
+        const firstAddressRow = await this.cache.getFirstAddressRow();
+        const nowIso = new Date().toISOString();
+
+        const result = await this.#createCustomer({
+            customer: {
+                email: SETUP_TEST_EMAIL,
+                phone: SETUP_TEST_PHONE,
+                first_name: SETUP_TEST_FIRST_NAME,
+                last_name: SETUP_TEST_LAST_NAME,
+                consents: {
+                    email: { date: nowIso, is_opt_in: true },
+                    gsm: { date: nowIso, is_opt_in: true },
+                },
+            },
+            address: {
+                city: firstAddressRow.CityDescription,
+                district: firstAddressRow.DistrictDescription,
+                address_text: SETUP_TEST_ADDRESS_TEXT,
+            },
+            is_receiver_not_customer: false,
+        });
+
+        return {
+            CustomerCode: result.CustomerCode,
+        };
+    }
+
+    #ensureAddressCodesCached = async () => {
+        const allAddressCodes = await this.cache.get(CacheFields.NEBIM.ADDRESS_CODES);
+
+        if (allAddressCodes?.length) return;
+
+        const rows = await this.api.runProc(this.tenant.nebim.procNames.defaults.addressCodes);
+        if (rows instanceof Error) {
+            this.throws(`Address codes procedure failed: ${rows.message}`);
+        }
+        if (!Array.isArray(rows) || rows.length === 0) {
+            this.throws("Address codes cache is empty");
+        }
+
+        await this.cache.set(CacheFields.NEBIM.ADDRESS_CODES, rows);
     }
 
     #getAddressCodes = async (address) => {

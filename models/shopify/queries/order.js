@@ -11,15 +11,40 @@ query Orders($cursor: String) {
                 cancelReason
                 createdAt
                 currencyCode
+                presentmentCurrencyCode
                 fullyPaid
                 id
                 name
                 netPayment
+                netPaymentSet {
+                    shopMoney {
+                        amount
+                        currencyCode
+                    }
+                    presentmentMoney {
+                        amount
+                        currencyCode
+                    }
+                }
                 note
                 totalDiscounts
+                totalDiscountsSet {
+                    shopMoney {
+                        amount
+                        currencyCode
+                    }
+                    presentmentMoney {
+                        amount
+                        currencyCode
+                    }
+                }
                 totalPrice
                 totalShippingPriceSet {
                     shopMoney {
+                        amount
+                        currencyCode
+                    }
+                    presentmentMoney {
                         amount
                         currencyCode
                     }
@@ -55,10 +80,30 @@ query Orders($cursor: String) {
                         discountedUnitPrice
                         id
                         originalUnitPrice
+                        originalUnitPriceSet {
+                            shopMoney {
+                                amount
+                                currencyCode
+                            }
+                            presentmentMoney {
+                                amount
+                                currencyCode
+                            }
+                        }
                         quantity
                         refundableQuantity
                         sku
                         totalDiscount
+                        totalDiscountSet {
+                            shopMoney {
+                                amount
+                                currencyCode
+                            }
+                            presentmentMoney {
+                                amount
+                                currencyCode
+                            }
+                        }
                         nonFulfillableQuantity
                         variant {
                             barcode
@@ -69,6 +114,7 @@ query Orders($cursor: String) {
                     address1
                     address2
                     city
+                    countryCodeV2
                     firstName
                     id
                     name
@@ -117,15 +163,40 @@ query GetOrdersById($ids: [ID!]!) {
       cancelReason
       createdAt
       currencyCode
+      presentmentCurrencyCode
       fullyPaid
       id
       name
       netPayment
+      netPaymentSet {
+        shopMoney {
+          amount
+          currencyCode
+        }
+        presentmentMoney {
+          amount
+          currencyCode
+        }
+      }
       note
       totalDiscounts
+      totalDiscountsSet {
+        shopMoney {
+          amount
+          currencyCode
+        }
+        presentmentMoney {
+          amount
+          currencyCode
+        }
+      }
       totalPrice
       totalShippingPriceSet {
         shopMoney {
+          amount
+          currencyCode
+        }
+        presentmentMoney {
           amount
           currencyCode
         }
@@ -161,10 +232,30 @@ query GetOrdersById($ids: [ID!]!) {
           discountedUnitPrice
           id
           originalUnitPrice
+          originalUnitPriceSet {
+            shopMoney {
+              amount
+              currencyCode
+            }
+            presentmentMoney {
+              amount
+              currencyCode
+            }
+          }
           quantity
           refundableQuantity
           sku
           totalDiscount
+          totalDiscountSet {
+            shopMoney {
+              amount
+              currencyCode
+            }
+            presentmentMoney {
+              amount
+              currencyCode
+            }
+          }
           nonFulfillableQuantity
           variant {
             barcode
@@ -175,6 +266,7 @@ query GetOrdersById($ids: [ID!]!) {
         address1
         address2
         city
+        countryCodeV2
         firstName
         id
         lastName

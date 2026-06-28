@@ -35,6 +35,7 @@
     "prisma:setup": "node scripts/prisma-setup.mjs",
     "start": "node app.js",
     "prestart": "npm run prisma:setup",
+    "predev": "npm run prisma:setup",
     "dev": "nodemon app.js"
   },
   "repository": {

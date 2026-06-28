@@ -121,6 +121,7 @@ class RequestLogModel {
       traceId: data.traceId,
       transactionId: data.transactionId || null,
       isError: data.isError || null,
+      businessLayer: data.businessLayer || null,
     };
 
     if (data.tenant) {
@@ -152,6 +153,7 @@ class RequestLogModel {
       traceId: log.traceId,
       transactionId: log.transactionId,
       isError: log.isError,
+      businessLayer: log.businessLayer,
       createdAt: log.createdAt,
     };
   }

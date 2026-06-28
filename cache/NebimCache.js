@@ -7,6 +7,19 @@ export default class NebimCache extends CoreCache {
         super(tenant);
     }
 
+    getFirstAddressRow = async () => {
+        const allAddressCodes = await this.get(CacheFields.NEBIM.ADDRESS_CODES) ?? [];
+        const firstValid = allAddressCodes.find(
+            (row) => row?.CityCode && row?.DistrictCode,
+        );
+
+        if (!firstValid) {
+            this.throws("Address codes cache is empty");
+        }
+
+        return firstValid;
+    }
+
     findAddressCode = async ({city, district}) => {
         const allAddressCodes = await this.get(CacheFields.NEBIM.ADDRESS_CODES) ?? [];
         this.logger.info(`${allAddressCodes.length} addresses fetched from cache`);

@@ -2,6 +2,10 @@ import CoreAPI from "../core/CoreAPI.js";
 import NebimCache from "../cache/NebimCache.js";
 import HttpStatusCodes from "../enums/HttpStatusCodes.js";
 import CryptoHelper from "../helpers/CryptoHelper.js";
+import {
+    buildNetworkErrorPayload,
+    friendlyNebimError,
+} from "../helpers/NebimErrorHelper.js";
 
 export default class NebimV3IntegratorAPI extends CoreAPI {
     constructor(tenant) {
@@ -13,7 +17,12 @@ export default class NebimV3IntegratorAPI extends CoreAPI {
         const  { host, userGroup, user, password } = infos;
 
         if (!host || !userGroup || !user || !password) {
-            return "Host, UserGroup, User and Password are required to connect to Nebim V3 Integrator";
+            return {
+                error: true,
+                message: "Host, UserGroup, User and Password are required to connect to Nebim V3 Integrator",
+                code: "VALIDATION",
+                detail: "Host, UserGroup, User and Password are required to connect to Nebim V3 Integrator",
+            };
         }
 
         const response = await this.httpRequest.post(`${host}/IntegratorService/Connect`, {
@@ -24,11 +33,22 @@ export default class NebimV3IntegratorAPI extends CoreAPI {
         });
 
         if (response instanceof Error) {
-            return response.message;
+            const payload = buildNetworkErrorPayload(response, host);
+            return {
+                error: true,
+                message: friendlyNebimError(payload?.code, payload?.detail),
+                code: payload?.code || response.code || "NETWORK",
+                detail: payload?.detail || response.message,
+            };
         }
 
         if (response.data["Exception"]) {
-            return response.data["Exception"]
+            return {
+                error: true,
+                message: response.data["Exception"],
+                code: "NEBIM_EXCEPTION",
+                detail: response.data["Exception"],
+            };
         }
 
         let accessToken = response.data["Token"];
@@ -36,13 +56,25 @@ export default class NebimV3IntegratorAPI extends CoreAPI {
         const now = new Date();
 
         if (!accessToken) {
-            if (sessionId) this.throws(`Nebim V3 Entegratör IIS ayarlarında "Oturum Durumu -> Etkinleştirilmedi" olmalıdır.`, true);
-            else this.throws(`Something went wrong while connecting Nebim V3 Integrator`);
+            if (sessionId) {
+                return {
+                    error: true,
+                    message: `Nebim V3 Entegratör IIS ayarlarında "Oturum Durumu -> Etkinleştirilmedi" olmalıdır.`,
+                    code: "NEBIM_SESSION",
+                    detail: `Nebim V3 Entegratör IIS ayarlarında "Oturum Durumu -> Etkinleştirilmedi" olmalıdır.`,
+                };
+            }
+            return {
+                error: true,
+                message: "Something went wrong while connecting Nebim V3 Integrator",
+                code: "NEBIM_TOKEN",
+                detail: "Something went wrong while connecting Nebim V3 Integrator",
+            };
         }
 
         await this.cache.set("Token", { token: accessToken, expiryDate: new Date(now.getTime() + 24 * 60 * 60 * 1000) });
 
-        return ""
+        return { error: false, token: accessToken };
     }
 
     connectionProvider = async (exec, host) => {
@@ -50,6 +82,10 @@ export default class NebimV3IntegratorAPI extends CoreAPI {
         let tokenData = await this.cache.get("Token");
 
         if(!tokenData || tokenData.expiryDate < Date.now()) {
+            if (!this.tenant?.nebim?.password) {
+                this.throws("Nebim bağlantı ayarları eksik. Lütfen kurulum adımlarından Nebim bağlantısını kaydedin.", true);
+            }
+
             this.logger.info2(`Getting token from Nebim V3 Integrator from ${host ?? this.tenant.nebim.host}`);
 
             response = await this.httpRequest.post(`${host ?? this.tenant.nebim.host}/IntegratorService/Connect`, {

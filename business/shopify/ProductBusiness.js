@@ -6,7 +6,6 @@ import metafieldQueries from "../../models/shopify/queries/metafield.js";
 import metafieldMutations from "../../models/shopify/mutations/metafield.js";
 import SyncedBarcode from "../../models/db/postgres/SyncedBarcode.js";
 import LimitBusiness from "../LimitBusiness.js";
-import Tenant from "../../models/db/postgres/Tenant.js";
 import SystemCodes from "../../enums/SystemCodes.js";
 import SystemHelper from "../../helpers/SystemHelper.js";
 import SystemCache from "../../cache/SystemCache.js";
@@ -19,11 +18,39 @@ export default class ShopifyProductBusiness extends CoreClass {
         this.cache = new ShopifyCache(tenant);
     }
 
+    #buildVariantPricing = variant => ({
+        price: variant.sale_price,
+        compareAtPrice: variant.compare_at_price ?? null,
+    });
+
     syncProductsDetailBulk = async (detailList, categoryList = []) => {
+        const tenantSyncCache = new SystemCache(this.tenant);
+        const TENANT_LOCK_TTL = 600; // seconds; heartbeat below renews it while the run is alive
+
+        if (!await tenantSyncCache.lockWithTimeout(CacheFields.SYSTEM.PRODUCT_SYNC_TENANT_LOCK, TENANT_LOCK_TTL)) {
+            this.logger.warn2("Product detail sync already in progress for tenant, skipping run");
+            return;
+        }
+
+        const lockHeartbeat = setInterval(() => {
+            tenantSyncCache.extendLock(CacheFields.SYSTEM.PRODUCT_SYNC_TENANT_LOCK, TENANT_LOCK_TTL)
+                .catch(error => this.logger.error(new Error(`Failed to extend product sync tenant lock: ${error.message}`)));
+        }, 300000);
+
+        try {
+            await this.#syncProductsDetailBulkLocked(detailList, categoryList);
+        } finally {
+            clearInterval(lockHeartbeat);
+            await tenantSyncCache.unlock(CacheFields.SYSTEM.PRODUCT_SYNC_TENANT_LOCK);
+        }
+    }
+
+    #syncProductsDetailBulkLocked = async (detailList, categoryList) => {
         const mutation = productMutations.sync;
         const metafields = new Set();
         const variantMetafields = new Set();
         const variantBlockedMetafieldKey = "gonextso_nebim_app.is_blocked_by_erp";
+        const limitBusiness = new LimitBusiness(this.tenant);
         let promises = [];
         const slug = text => text.replace(/ /g, "-").toLowerCase();
 
@@ -63,37 +90,25 @@ export default class ShopifyProductBusiness extends CoreClass {
                 continue;
             }
 
-            if (this.tenant.shopify.billing.planKey !== SystemCodes.BILLING_PLANS.ENTERPRISE.KEY) {
-                const limitBusiness = new LimitBusiness(await Tenant.findById(this.tenant.id));
-                let isProductAlreadySynced = syncedBarcodeDocs.length > 0;
-                let isLimitAvailable = true;
+            if (
+                this.tenant.shopify.billing.planKey !== SystemCodes.BILLING_PLANS.ENTERPRISE.KEY
+            ) {
+                // Only variants that don't exist in Shopify yet consume quota;
+                // update-only products sync without touching the limit.
+                const newVariants = variantsForSync.filter(variant => !syncedBarcodeMap.get(variant.barcode));
+
+                if (newVariants.length > 0) {
+                    try {
+                        await limitBusiness.checkLimitAvailability(SystemCodes.LIMIT_TYPE.PRODUCT_DETAILS, newVariants.length);
+                    } catch (error) {
+                        this.logger.warn2(`SKU limit exceed: product ${product.erp_id} needs ${newVariants.length} new SKUs, skipping`);
+                        continue;
+                    }
+                }
 
                 for (const variant of variantsForSync) {
-                    try {
-                        await limitBusiness.checkLimitAvailability(SystemCodes.LIMIT_TYPE.PRODUCT_DETAILS, 1);
-                    } catch (error) {
-                        isLimitAvailable = false;
-                    }
-
-                    const existingSync = syncedBarcodeMap.get(variant.barcode);
-
-                    if (!isLimitAvailable && existingSync) {
-                        isLimitAvailable = true;
-                        isProductAlreadySynced = true;
-                        this.logger.info4(`Barcode ${variant.barcode} already synced, skipping limit check`);
-                    }
-
-                    if (!isLimitAvailable) {
-                        this.logger.warn2("SKU limit exceed");
-                        break;
-                    }
-
                     productColorOp.add(variant.color);
                     productSizeOp.add(variant.dimention);
-                };
-
-                if (!isLimitAvailable) {
-                    break;
                 }
 
                 const category = categoryList.length ? categoryList.filter(x => x.erpKey === product.category)[0] ?? {} : {};
@@ -104,6 +119,7 @@ export default class ShopifyProductBusiness extends CoreClass {
                         ...(existingProductId ? { id: existingProductId } : {}),
                         status: "DRAFT",
                         title: product.title,
+                        descriptionHtml: product.description,
                         category: category.ecommerceKey ? category.ecommerceKey : null,
                         productOptions: [
                             productColorOp.size ? {
@@ -130,7 +146,7 @@ export default class ShopifyProductBusiness extends CoreClass {
                                         name: x.dimention
                                     } : null
                                 ].filter(Boolean),
-                                price: x.sale_price,
+                                ...this.#buildVariantPricing(x),
                                 barcode: x.barcode,
                                 sku: x.sku,
                                 metafields: [{
@@ -213,10 +229,7 @@ export default class ShopifyProductBusiness extends CoreClass {
                         { upsert: true }
                     );
                 }
-
-                if (this.tenant.shopify.billing.planKey !== SystemCodes.BILLING_PLANS.ENTERPRISE.KEY && !isProductAlreadySynced)
-                    await limitBusiness.useLimit(SystemCodes.LIMIT_TYPE.PRODUCT_DETAILS, variantsForSync.length);
-            } else if (this.tenant.shopify.billing.planKey === SystemCodes.BILLING_PLANS.ENTERPRISE.KEY || this.tenant.shopify.billing.planKey === SystemCodes.BILLING_PLANS.PRO.KEY) {
+            } else if (this.tenant.shopify.billing.planKey === SystemCodes.BILLING_PLANS.ENTERPRISE.KEY) {
                 promises.push(async () => {
                     this.logger.info4(`Syncing product ${product.erp_id} in parallel`);
                     
@@ -264,38 +277,6 @@ export default class ShopifyProductBusiness extends CoreClass {
                             return;
                         }
 
-                        // PRO: only net-new variants (no Shopify variantId yet) consume headroom; already-linked rows are not counted.
-                        // If the product already has linked variants, never abort the whole productSet on limit — finish updates in Shopify,
-                        // then useLimit only for variants that were actually new before this run (see loop after mutation).
-                        const hasAnyLinkedVariant = localVariantsForSync.some(
-                            (v) => Boolean(localSyncedBarcodeMap.get(v.barcode)?.variantId)
-                        );
-                        if (this.tenant.shopify.billing.planKey === SystemCodes.BILLING_PLANS.PRO.KEY) {
-                            const limitBusiness = new LimitBusiness(await Tenant.findById(this.tenant.id));
-                            for (const variant of localVariantsForSync) {
-                                const priorSync = localSyncedBarcodeMap.get(variant.barcode);
-                                if (priorSync?.variantId) {
-                                    continue;
-                                }
-                                try {
-                                    await limitBusiness.checkLimitAvailability(SystemCodes.LIMIT_TYPE.PRODUCT_DETAILS, 1);
-                                } catch (error) {
-                                    if (priorSync) {
-                                        this.logger.info4(`Barcode ${variant.barcode} already synced, skipping limit check`);
-                                        continue;
-                                    }
-                                    if (hasAnyLinkedVariant) {
-                                        this.logger.warn2(
-                                            `SKU limit exceeded for new variant(s) on ${product.erp_id}; continuing product sync because product has already-linked variants`
-                                        );
-                                        break;
-                                    }
-                                    this.logger.warn2(`SKU limit exceed for product ${product.erp_id}, variant ${variant.barcode}`);
-                                    return;
-                                }
-                            }
-                        }
-
                         for (const variant of localVariantsForSync) {
                             productColorOp.add(variant.color);
                             productSizeOp.add(variant.dimention);
@@ -335,7 +316,7 @@ export default class ShopifyProductBusiness extends CoreClass {
                                             name: x.dimention
                                         } : null
                                     ].filter(Boolean),
-                                    price: x.sale_price,
+                                    ...this.#buildVariantPricing(x),
                                     barcode: x.barcode,
                                     sku: x.sku,
                                     metafields: [{
@@ -402,7 +383,6 @@ export default class ShopifyProductBusiness extends CoreClass {
                             localExistingProductId = shopifyProduct.id;
                         }
 
-                        const limitBusinessForUsage = new LimitBusiness(await Tenant.findById(this.tenant.id));
                         for (let index = 0; index < localVariantsForSync.length; index++) {
                             const variant = localVariantsForSync[index];
                             const existingSync = localSyncedBarcodeMap.get(variant.barcode);
@@ -420,15 +400,6 @@ export default class ShopifyProductBusiness extends CoreClass {
                                 },
                                 { upsert: true }
                             );
-
-                            if (this.tenant.shopify.billing.planKey === SystemCodes.BILLING_PLANS.ENTERPRISE.KEY) {
-                                await limitBusinessForUsage.useLimit(SystemCodes.LIMIT_TYPE.PRODUCT_DETAILS, 1);
-                            } else if (
-                                this.tenant.shopify.billing.planKey === SystemCodes.BILLING_PLANS.PRO.KEY
-                                && !existingSync?.variantId
-                            ) {
-                                await limitBusinessForUsage.useLimit(SystemCodes.LIMIT_TYPE.PRODUCT_DETAILS, 1);
-                            }
                         }
                     } finally {
                         // Always release locks, even if error occurred
@@ -469,6 +440,8 @@ export default class ShopifyProductBusiness extends CoreClass {
 
         await this.#setMetafieldDefinitions(metafields, "PRODUCT");
         await this.#setMetafieldDefinitions(variantMetafields, "PRODUCTVARIANT");
+
+        await limitBusiness.syncUsageSnapshot(SystemCodes.LIMIT_TYPE.PRODUCT_DETAILS);
     }
 
     #setMetafieldDefinitions = async (metafields, ownerType) => {
