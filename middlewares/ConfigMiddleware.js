@@ -38,6 +38,13 @@ export default new class ConfigMiddleware extends CoreController {
         req.tenant = tenant;
         req.tenant.shopify.decyrptedApiKey = CyrptoHelper.decrypt(tenant.shopify.apiKey);
 
+        if (tenant.shopify?.billing?.isBlocked) {
+            return this.response(res, {
+                status: HttpStatusCodes.FORBIDDEN,
+                info: "Store is blocked. Synchronization is disabled.",
+            });
+        }
+
         return next();
     }
 }

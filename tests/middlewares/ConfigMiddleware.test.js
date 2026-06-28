@@ -1,10 +1,10 @@
 import { jest, describe, it, expect, beforeEach, afterEach } from '@jest/globals';
 import HttpStatusCodes from '../../enums/HttpStatusCodes.js';
-import mongoose from 'mongoose';
 
-// Mock dependencies before imports
+const tenantId = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11';
+
 const mockTenant = {
-  _id: '507f1f77bcf86cd799439011',
+  id: tenantId,
   name: 'test-tenant',
   shopify: {
     apiKey: {
@@ -12,6 +12,7 @@ const mockTenant = {
       iv: 'iv-value',
       authTag: 'auth-tag',
     },
+    billing: { isBlocked: false },
   },
   nebim: {
     password: {
@@ -23,10 +24,7 @@ const mockTenant = {
 };
 
 const mockTenantModel = {
-  findById: jest.fn().mockReturnValue({
-    select: jest.fn().mockReturnThis(),
-    lean: jest.fn().mockResolvedValue(mockTenant),
-  }),
+  findById: jest.fn().mockResolvedValue(mockTenant),
 };
 
 const mockCryptoHelper = {
@@ -39,7 +37,7 @@ const mockCoreController = {
 
 const mockCoreControllerClass = jest.fn().mockImplementation(() => mockCoreController);
 
-await jest.unstable_mockModule('../../models/db/Tenant.js', () => ({
+await jest.unstable_mockModule('../../models/db/postgres/Tenant.js', () => ({
   default: mockTenantModel,
 }));
 
@@ -66,6 +64,7 @@ describe('ConfigMiddleware', () => {
     mockRes = {};
     mockNext = jest.fn();
     jest.clearAllMocks();
+    mockTenantModel.findById.mockResolvedValue(mockTenant);
   });
 
   afterEach(() => {
@@ -74,7 +73,6 @@ describe('ConfigMiddleware', () => {
 
   describe('setConfigViaTenantId', () => {
     it('should set tenant config when valid tenant ID is provided', async () => {
-      const tenantId = '507f1f77bcf86cd799439011';
       mockReq.headers['x-tenant-id'] = tenantId;
 
       await ConfigMiddleware.setConfigViaTenantId(mockReq, mockRes, mockNext);
@@ -87,7 +85,6 @@ describe('ConfigMiddleware', () => {
     });
 
     it('should use req.get when header is not in headers object', async () => {
-      const tenantId = '507f1f77bcf86cd799439011';
       mockReq.get.mockReturnValue(tenantId);
 
       await ConfigMiddleware.setConfigViaTenantId(mockReq, mockRes, mockNext);
@@ -107,26 +104,21 @@ describe('ConfigMiddleware', () => {
       expect(mockNext).not.toHaveBeenCalled();
     });
 
-    it('should return BAD_REQUEST when tenant ID is invalid ObjectId', async () => {
+    it('should return BAD_REQUEST when tenant ID is invalid UUID', async () => {
       mockReq.headers['x-tenant-id'] = 'invalid-id';
 
       await ConfigMiddleware.setConfigViaTenantId(mockReq, mockRes, mockNext);
 
       expect(mockCoreController.response).toHaveBeenCalledWith(mockRes, {
         status: HttpStatusCodes.BAD_REQUEST,
-        info: 'Invalid mongo object id format.',
+        info: 'Invalid UUID format.',
       });
       expect(mockNext).not.toHaveBeenCalled();
     });
 
     it('should return NOT_FOUND when tenant is not found', async () => {
-      const tenantId = '507f1f77bcf86cd799439011';
       mockReq.headers['x-tenant-id'] = tenantId;
-
-      mockTenantModel.findById.mockReturnValue({
-        select: jest.fn().mockReturnThis(),
-        lean: jest.fn().mockResolvedValue(null),
-      });
+      mockTenantModel.findById.mockResolvedValue(null);
 
       await ConfigMiddleware.setConfigViaTenantId(mockReq, mockRes, mockNext);
 
@@ -137,27 +129,24 @@ describe('ConfigMiddleware', () => {
       expect(mockNext).not.toHaveBeenCalled();
     });
 
-    it('should select encrypted fields from tenant', async () => {
-      const tenantId = '507f1f77bcf86cd799439011';
+    it('should return FORBIDDEN when tenant is blocked', async () => {
       mockReq.headers['x-tenant-id'] = tenantId;
 
-      const selectMock = jest.fn().mockReturnThis();
-      const leanMock = jest.fn().mockResolvedValue(mockTenant);
-      
-      mockTenantModel.findById.mockReturnValue({
-        select: selectMock,
-        lean: leanMock,
+      mockTenantModel.findById.mockResolvedValue({
+        ...mockTenant,
+        shopify: {
+          ...mockTenant.shopify,
+          billing: { isBlocked: true },
+        },
       });
 
       await ConfigMiddleware.setConfigViaTenantId(mockReq, mockRes, mockNext);
 
-      expect(selectMock).toHaveBeenCalledWith('+shopify.apiKey.encryptedData');
-      expect(selectMock).toHaveBeenCalledWith('+shopify.apiKey.iv');
-      expect(selectMock).toHaveBeenCalledWith('+shopify.apiKey.authTag');
-      expect(selectMock).toHaveBeenCalledWith('+nebim.password.encryptedData');
-      expect(selectMock).toHaveBeenCalledWith('+nebim.password.iv');
-      expect(selectMock).toHaveBeenCalledWith('+nebim.password.authTag');
+      expect(mockCoreController.response).toHaveBeenCalledWith(mockRes, {
+        status: HttpStatusCodes.FORBIDDEN,
+        info: 'Store is blocked. Synchronization is disabled.',
+      });
+      expect(mockNext).not.toHaveBeenCalled();
     });
   });
 });
-
