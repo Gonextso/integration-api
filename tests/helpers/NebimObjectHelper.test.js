@@ -472,34 +472,78 @@ describe('NebimObjectHelper', () => {
   });
 
   describe('getStoreInfoList', () => {
-    it('should map Nebim store info rows to shop metafield shape', () => {
+    it('should normalize multi-day rows into one store object with store_work_info', () => {
       const rows = [
         {
-          Desc: 'Kadıköy Mağazası',
-          GeoLocation: '40.99, 29.02',
-          Address: 'Address 1',
-          Phone: '+90 212 000 00 00',
-          Email: 'info@example.com',
-          OpeningHours: '09:00 - 18:00',
-          ClosingHours: '13:00 - 14:00',
-          DaysOfWeek: 'Monday, Tuesday',
+          Desc: 'Pendik Mağaza',
+          GeoLocation: 'POINT (29.3 40.9)',
+          Address: 'Pendik Cad. No:5',
+          Phone: '+90 216 000 00 00',
+          Email: 'pendik@example.com',
+          OpeningHours: '10:00:00',
+          ClosingHours: '18:00:00',
+          DaysOfWeek: 1,
+        },
+        {
+          Desc: 'Pendik Mağaza',
+          GeoLocation: 'POINT (29.3 40.9)',
+          Address: 'Pendik Cad. No:5',
+          Phone: '+90 216 000 00 00',
+          Email: 'pendik@example.com',
+          OpeningHours: '09:00:00',
+          ClosingHours: '18:00:00',
+          DaysOfWeek: 2,
         },
       ];
 
       const result = NebimObjectHelper.getStoreInfoList(rows);
 
-      expect(result).toEqual([
-        {
-          desc: 'Kadıköy Mağazası',
-          geo_location: '40.99, 29.02',
-          address: 'Address 1',
-          phone: '+90 212 000 00 00',
-          email: 'info@example.com',
-          opening_hours: '09:00 - 18:00',
-          closing_hours: '13:00 - 14:00',
-          days_of_week: 'Monday, Tuesday',
-        },
-      ]);
+      expect(result).toHaveLength(1);
+      expect(result[0]).toEqual({
+        desc: 'Pendik Mağaza',
+        geo_location: 'POINT (29.3 40.9)',
+        link_html: '<a href="https://www.google.com/maps?q=40.9,29.3">Pendik Cad. No:5</a>',
+        address: 'Pendik Cad. No:5',
+        phone: '+90 216 000 00 00',
+        email: 'pendik@example.com',
+        store_work_info: [
+          { day: 1, opening_hours: '10:00:00', closing_hours: '18:00:00' },
+          { day: 2, opening_hours: '09:00:00', closing_hours: '18:00:00' },
+        ],
+      });
+    });
+
+    it('should produce separate objects for different stores', () => {
+      const rows = [
+        { Desc: 'Mağaza A', GeoLocation: 'POINT (29.0 41.0)', Address: 'Adres A', Phone: '', Email: '', OpeningHours: '09:00:00', ClosingHours: '18:00:00', DaysOfWeek: 1 },
+        { Desc: 'Mağaza B', GeoLocation: '', Address: '', Phone: '', Email: '', OpeningHours: '00:00:00', ClosingHours: '00:00:00', DaysOfWeek: 0 },
+      ];
+
+      const result = NebimObjectHelper.getStoreInfoList(rows);
+
+      expect(result).toHaveLength(2);
+      expect(result[0].desc).toBe('Mağaza A');
+      expect(result[1].desc).toBe('Mağaza B');
+    });
+
+    it('should leave link_html empty when GeoLocation is null', () => {
+      const rows = [
+        { Desc: 'Online Mağaza', GeoLocation: null, Address: 'Dijital Adres', Phone: '', Email: '', OpeningHours: '', ClosingHours: '', DaysOfWeek: 0 },
+      ];
+
+      const result = NebimObjectHelper.getStoreInfoList(rows);
+
+      expect(result[0].link_html).toBe('');
+    });
+
+    it('should leave link_html empty when Address is empty', () => {
+      const rows = [
+        { Desc: 'Bilinmeyen', GeoLocation: 'POINT (29.02 40.99)', Address: '', Phone: '', Email: '', OpeningHours: '', ClosingHours: '', DaysOfWeek: 0 },
+      ];
+
+      const result = NebimObjectHelper.getStoreInfoList(rows);
+
+      expect(result[0].link_html).toBe('');
     });
   });
 

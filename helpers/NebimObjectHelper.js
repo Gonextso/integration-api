@@ -66,18 +66,60 @@ export default class NebimObjectHelper extends CoreClass {
         quantity: x.Inventory > 0 ? x.Inventory : 0
     }));
 
-    static getStoreInfoList = rows => (rows ?? [])
-        .filter(row => row?.Desc)
-        .map(row => ({
-            desc: row.Desc ?? '',
-            geo_location: row.GeoLocation ?? '',
-            address: row.Address ?? '',
-            phone: row.Phone ?? '',
-            email: row.Email ?? '',
-            opening_hours: row.OpeningHours ?? '',
-            closing_hours: row.ClosingHours ?? '',
-            days_of_week: row.DaysOfWeek ?? '',
-        }));
+    /**
+     * Parses a PostGIS-style POINT string: "POINT (lng lat)" → { lat, lng }
+     * Returns null if the string is missing or doesn't match the expected format.
+     */
+    static #parseGeoPoint = geoStr => {
+        if (!geoStr) return null;
+        const match = String(geoStr).match(/^POINT\s*\(\s*([\d.+-]+)\s+([\d.+-]+)\s*\)$/i);
+        if (!match) return null;
+        const lng = parseFloat(match[1]);
+        const lat = parseFloat(match[2]);
+        if (isNaN(lng) || isNaN(lat)) return null;
+        return { lat, lng };
+    };
+
+    /**
+     * Normalizes raw Nebim store rows into one object per store.
+     * Rows that share the same Desc are merged: static fields (address, phone, etc.)
+     * are taken from the first occurrence; per-day schedule rows are collected
+     * into store_work_info[].
+     */
+    static getStoreInfoList = rows => {
+        const storeMap = new Map();
+
+        for (const row of (rows ?? [])) {
+            const desc = row?.Desc;
+            if (!desc) continue;
+
+            if (!storeMap.has(desc)) {
+                const geo = NebimObjectHelper.#parseGeoPoint(row.GeoLocation);
+                const address = row.Address ?? '';
+                const link_html = (geo && address)
+                    ? `<a href="https://www.google.com/maps?q=${geo.lat},${geo.lng}">${address}</a>`
+                    : '';
+
+                storeMap.set(desc, {
+                    desc,
+                    geo_location: row.GeoLocation ?? '',
+                    link_html,
+                    address,
+                    phone: row.Phone ?? '',
+                    email: row.Email ?? '',
+                    store_work_info: [],
+                });
+            }
+
+            storeMap.get(desc).store_work_info.push({
+                day: row.DaysOfWeek ?? 0,
+                opening_hours: row.OpeningHours ?? '',
+                closing_hours: row.ClosingHours ?? '',
+            });
+        }
+
+        return [...storeMap.values()];
+    };
 
     static getFindInStoreByBarcode = rows => {
         const grouped = new Map();
