@@ -1,6 +1,7 @@
 import CoreClass from "../core/CoreClass.js";
 import SystemCodes from "../enums/SystemCodes.js";
 import OrderSyncBatch from "../models/db/postgres/OrderSyncBatch.js";
+import SyncBatchLog from "../models/db/postgres/SyncBatchLog.js";
 import FailedOrder from "../models/db/postgres/FailedOrder.js";
 import NebimOrderBusiness from "./nebim/OrderBusiness.js";
 import ShopifyOrderBusiness from "./shopify/OrderBusiness.js";
@@ -12,10 +13,21 @@ export default class OrderBusiness extends CoreClass {
         super(tenant);
     }
 
+    /**
+     * Adım adım batch logu yazar. Hata fırlatmaz — log yazılamasa bile ana akış devam eder.
+     */
+    #logBatchStep = async (syncBatchId, level, step, message, data = undefined) => {
+        try {
+            await SyncBatchLog.create({ syncBatchId, level, step, message, data });
+        } catch (err) {
+            this.logger.warn(`SyncBatchLog yazılamadı (${step}): ${err?.message}`);
+        }
+    }
+
     syncShopifyToNebim = async (startDate, endDate) => {
         try {
             this.logger.info(`Sync order Shopify to Nebim started for ${startDate} to ${endDate}`);
-            
+
             const shopifyOrderBusiness = new ShopifyOrderBusiness(this.tenant);
             const nebimOrderBusiness = new NebimOrderBusiness(this.tenant);
             const orderMetadataMapping = [];
@@ -53,6 +65,26 @@ export default class OrderBusiness extends CoreClass {
                     cancelOrderSkippedFailed: 0
                 }
             });
+
+            await this.#logBatchStep(orderSyncBatch.id, 'INFO', 'FETCH_ORDERS',
+                `Shopify'dan ${shopifyOrderList.length} sipariş çekildi (${startDate} - ${endDate})`,
+                { total: shopifyOrderList.length, startDate, endDate });
+
+            await this.#logBatchStep(orderSyncBatch.id, 'INFO', 'CREATE_ORDERS',
+                `Nebim'e ${shopifyOrderList.filter(x => !x.is_cancelled).length} sipariş gönderildi — başarılı: ${craeteOrderResults.successOrders.length}, hatalı: ${craeteOrderResults.failedOrders.length}, atlandı: ${craeteOrderResults.skippedFailedOrderCount + craeteOrderResults.skippedAlreadySyncedOrders}`,
+                {
+                    success: craeteOrderResults.successOrders.length,
+                    error: craeteOrderResults.failedOrders.length,
+                    skippedAlreadySynced: craeteOrderResults.skippedAlreadySyncedOrders,
+                    skippedFailed: craeteOrderResults.skippedFailedOrderCount,
+                    failedOrderIds: craeteOrderResults.failedOrders.map(o => o.ecommerceId),
+                });
+
+            if (craeteOrderResults.failedOrders.length) {
+                await this.#logBatchStep(orderSyncBatch.id, 'WARN', 'CREATE_ORDERS_ERRORS',
+                    `${craeteOrderResults.failedOrders.length} sipariş Nebim'e gönderilemedi`,
+                    { orders: craeteOrderResults.failedOrders.map(o => ({ id: o.ecommerceId, reason: o.reason })) });
+            }
 
             if (craeteOrderResults.failedOrders.length) {
                 for (const failedOrder of craeteOrderResults.failedOrders) {
@@ -95,7 +127,21 @@ export default class OrderBusiness extends CoreClass {
 
             const cancelOrders = await nebimOrderBusiness.cancelOrders(shopifyOrderList);
 
+            await this.#logBatchStep(orderSyncBatch.id, 'INFO', 'CANCEL_ORDERS',
+                `İptal süreci — toplam: ${shopifyOrderList.filter(x => x.is_cancelled).length}, başarılı: ${cancelOrders.successOrders.length}, hatalı: ${cancelOrders.failedOrders.length}`,
+                {
+                    success: cancelOrders.successOrders.length,
+                    error: cancelOrders.failedOrders.length,
+                    skippedAlreadySynced: cancelOrders.skippedAlreadySyncedOrders,
+                    skippedFailed: cancelOrders.skippedFailedOrderCount,
+                    skippedNotFound: cancelOrders.skippedNotSyncedCancelOrders,
+                });
+
             if (cancelOrders.failedOrders.length) {
+                await this.#logBatchStep(orderSyncBatch.id, 'WARN', 'CANCEL_ORDERS_ERRORS',
+                    `${cancelOrders.failedOrders.length} iptal siparişi gönderilemedi`,
+                    { orders: cancelOrders.failedOrders.map(o => ({ id: o.ecommerceId, reason: o.reason })) });
+
                 for (const failedOrder of cancelOrders.failedOrders) {
                     await FailedOrder.create({
                         shopifyOrderId: failedOrder.ecommerceId,
@@ -137,6 +183,9 @@ export default class OrderBusiness extends CoreClass {
                     }
                 }
             );
+
+            await this.#logBatchStep(orderSyncBatch.id, 'INFO', 'COMPLETED',
+                `Sync tamamlandı — toplam sipariş: ${shopifyOrderList.length}, oluşturma başarı: ${craeteOrderResults.successOrders.length}, iptal başarı: ${cancelOrders.successOrders.length}`);
         } catch (error) {
             const syncError = new Error(`Error syncing Shopify to Nebim for ${startDate} to ${endDate}`);
             if (error instanceof Error) {
@@ -266,17 +315,31 @@ export default class OrderBusiness extends CoreClass {
                 }
             });
 
+            await this.#logBatchStep(orderSyncBatch.id, 'INFO', 'START',
+                `Failed order sync başlatıldı — istenen: ${orderNumberList.length} sipariş`);
+
             if (failedOrderList.length) {
                 this.logger.info(`${failedOrderList.length} failed orders found, sync started`);
+                await this.#logBatchStep(orderSyncBatch.id, 'INFO', 'FETCH_FAILED_ORDERS',
+                    `${failedOrderList.length} başarısız sipariş bulundu, ${orderNumberList.length - failedOrderList.length} atlandı (listede değil)`);
 
                 const orderList = await shopifyOrderBusiness.getOrdersByIds(failedOrderList.map(x => x.ecommerceId.split('.')[1]))
                 
                 const filteredCount = failedOrderList.length - orderList.length;
                 if (filteredCount > 0) {
                     this.logger.info(`${filteredCount} failed orders filtered out (already have gonextso_nebim_app.order_id metafield)`);
+                    await this.#logBatchStep(orderSyncBatch.id, 'INFO', 'FILTER_ORDERS',
+                        `${filteredCount} sipariş zaten senkronize edilmiş (metafield mevcut), atlandı`);
                 }
-                
+
                 const craeteOrderResults = await nebimOrderBusiness.createOrders(orderList, true);
+                await this.#logBatchStep(orderSyncBatch.id, 'INFO', 'CREATE_ORDERS',
+                    `Nebim'e ${orderList.length} sipariş gönderildi — başarılı: ${craeteOrderResults.successOrders.length}, hatalı: ${craeteOrderResults.failedOrders.length}`,
+                    {
+                        success: craeteOrderResults.successOrders.length,
+                        error: craeteOrderResults.failedOrders.length,
+                        failedOrderIds: craeteOrderResults.failedOrders.map(o => o.ecommerceId),
+                    });
 
                 for (const failedOrder of craeteOrderResults.failedOrders) {
                     await FailedOrder.updateOne(
@@ -335,6 +398,8 @@ export default class OrderBusiness extends CoreClass {
                 orderSyncBatch.skippedAlreadySyncedOrderCount = craeteOrderResults.skippedAlreadySyncedOrders;
             } else {
                 this.logger.info(`No failed orders found`);
+                await this.#logBatchStep(orderSyncBatch.id, 'INFO', 'FETCH_FAILED_ORDERS',
+                    `Başarısız sipariş bulunamadı, oluşturma adımı atlandı`);
             }
 
             // Get all failed cancel orders for tenant, then filter by orderNumberList
@@ -358,6 +423,13 @@ export default class OrderBusiness extends CoreClass {
                 }
                 
                 const cancelOrderResults = await nebimOrderBusiness.cancelOrders(cancelOrderList, true);
+                await this.#logBatchStep(orderSyncBatch.id, 'INFO', 'CANCEL_ORDERS',
+                    `İptal sync — başarılı: ${cancelOrderResults.successOrders.length}, hatalı: ${cancelOrderResults.failedOrders.length}`,
+                    {
+                        success: cancelOrderResults.successOrders.length,
+                        error: cancelOrderResults.failedOrders.length,
+                        failedOrderIds: cancelOrderResults.failedOrders.map(o => o.ecommerceId),
+                    });
 
                 for (const failedOrder of cancelOrderResults.failedOrders) {
                     await FailedOrder.updateOne(
@@ -406,7 +478,12 @@ export default class OrderBusiness extends CoreClass {
                 orderSyncBatch.skippedAlreadySyncedOrderCount += cancelOrderResults.skippedAlreadySyncedOrders;
             } else {
                 this.logger.info(`No failed cancel orders found`);
+                await this.#logBatchStep(orderSyncBatch.id, 'INFO', 'FETCH_FAILED_CANCEL_ORDERS',
+                    `Başarısız iptal siparişi bulunamadı, iptal adımı atlandı`);
             }
+
+            await this.#logBatchStep(orderSyncBatch.id, 'INFO', 'COMPLETED',
+                `Failed order sync tamamlandı`);
 
             await OrderSyncBatch.updateOne(
                 { id: orderSyncBatch.id },
@@ -425,30 +502,100 @@ export default class OrderBusiness extends CoreClass {
     }
 
     syncOrderStatus = async (startDate) => {
+        let orderSyncBatch = null;
         try {
             this.logger.info(`Sync order status started for ${startDate}`);
+
+            orderSyncBatch = await OrderSyncBatch.create({
+                request: { startDate },
+                process: SystemCodes.PROCESS.SYNC_ORDER_STATUS,
+                tenant: this.tenant.id,
+                traceId: this.traceId,
+                isErrorLogExistsForThisBatch: false,
+                numbers: {
+                    total: 0,
+                    createOrderTotal: 0,
+                    createOrderSuccess: 0,
+                    createOrderError: 0,
+                    createOrderSkippedTotal: 0,
+                    createOrderSkippedAlreadySynced: 0,
+                    createOrderSkippedFailed: 0,
+                    cancelOrderTotal: 0,
+                    cancelOrderSuccess: 0,
+                    cancelOrderError: 0,
+                    cancelOrderSkippedTotal: 0,
+                    cancelOrderSkippedAlreadySynced: 0,
+                    cancelOrderSkippedFailed: 0,
+                    cancelOrderSkippedNotFound: 0,
+                }
+            });
+
+            await this.#logBatchStep(orderSyncBatch.id, 'INFO', 'START',
+                `Order status sync başlatıldı — startDate: ${startDate}`);
 
             const shopifyOrderBusiness = new ShopifyOrderBusiness(this.tenant);
             const nebimOrderBusiness = new NebimOrderBusiness(this.tenant);
 
             const orderStatusList = await nebimOrderBusiness.getOrderStatus(startDate);
-            
             const orderStatusCount = orderStatusList ? Object.keys(orderStatusList).length : 0;
+
             this.logger.info(`Sync order status: Found ${orderStatusCount} orders with status from Nebim for ${startDate}`);
+            await this.#logBatchStep(orderSyncBatch.id, 'INFO', 'FETCH_STATUS',
+                `Nebim'den ${orderStatusCount} sipariş statüsü çekildi`,
+                { startDate, count: orderStatusCount });
 
             if (orderStatusCount === 0) {
                 this.logger.info(`Sync order status: No orders found from Nebim, skipping Shopify update`);
+                await this.#logBatchStep(orderSyncBatch.id, 'INFO', 'COMPLETED',
+                    `Nebim'de statü değişimi bulunamadı, sync atlandı`);
                 return;
             }
 
             const updateResults = await shopifyOrderBusiness.updateOrderFullfillmentStatus(orderStatusList);
-            
-            // Log summary statistics
+
             const totalProcessed = updateResults.length;
             const successful = updateResults.filter(r => r.success).length;
             const failed = updateResults.filter(r => !r.success).length;
-            
+
             this.logger.info(`Sync order status summary for ${startDate}: Total processed: ${totalProcessed}, Successful: ${successful}, Failed: ${failed}`);
+
+            await this.#logBatchStep(
+                orderSyncBatch.id,
+                failed > 0 ? 'WARN' : 'INFO',
+                'UPDATE_FULFILLMENT',
+                `Shopify fulfillment güncellendi — toplam: ${totalProcessed}, başarılı: ${successful}, hatalı: ${failed}`,
+                {
+                    total: totalProcessed,
+                    successful,
+                    failed,
+                    failedOrders: updateResults.filter(r => !r.success).map(r => ({ id: r.orderId, reason: r.error })),
+                });
+
+            await OrderSyncBatch.updateOne(
+                { id: orderSyncBatch.id },
+                {
+                    isErrorLogExistsForThisBatch: failed > 0,
+                    numbers: {
+                        total: totalProcessed,
+                        createOrderTotal: totalProcessed,
+                        createOrderSuccess: successful,
+                        createOrderError: failed,
+                        createOrderSkippedTotal: 0,
+                        createOrderSkippedAlreadySynced: 0,
+                        createOrderSkippedFailed: 0,
+                        cancelOrderTotal: 0,
+                        cancelOrderSuccess: 0,
+                        cancelOrderError: 0,
+                        cancelOrderSkippedTotal: 0,
+                        cancelOrderSkippedAlreadySynced: 0,
+                        cancelOrderSkippedFailed: 0,
+                        cancelOrderSkippedNotFound: 0,
+                    }
+                }
+            );
+
+            await this.#logBatchStep(orderSyncBatch.id, 'INFO', 'COMPLETED',
+                `Order status sync tamamlandı — başarılı: ${successful}, hatalı: ${failed}`);
         } catch (error) {
             const syncError = new Error(`Error syncing order status for ${startDate}`);
             if (error instanceof Error) {
@@ -456,10 +603,13 @@ export default class OrderBusiness extends CoreClass {
                 syncError.cause = error;
             }
             this.logger.error(syncError);
+            if (orderSyncBatch?.id) {
+                await this.#logBatchStep(orderSyncBatch.id, 'ERROR', 'FAILED',
+                    `Order status sync başarısız: ${error?.message ?? String(error)}`);
+            }
         } finally {
             this.logger.info(`Sync order status finished for ${startDate}`);
         }
-        //TODO: handle sync batches
         //TODO: handle cancelled orders from erp not a big deal maybe wait for feature request
     }
 }

@@ -12,6 +12,7 @@ class OrderSyncBatchModel {
         tenant: true,
         failedOrders: true,
         successOrders: true,
+        logs: { orderBy: { createdAt: 'asc' } },
       },
       orderBy: {
         createdAt: 'desc',
@@ -32,6 +33,7 @@ class OrderSyncBatchModel {
         tenant: true,
         failedOrders: true,
         successOrders: true,
+        logs: { orderBy: { createdAt: 'asc' } },
       },
     });
 
@@ -61,6 +63,7 @@ class OrderSyncBatchModel {
         tenant: true,
         failedOrders: true,
         successOrders: true,
+        logs: { orderBy: { createdAt: 'asc' } },
       },
     });
 
@@ -81,6 +84,7 @@ class OrderSyncBatchModel {
         tenant: true,
         failedOrders: true,
         successOrders: true,
+        logs: { orderBy: { createdAt: 'asc' } },
       },
     });
 
@@ -214,6 +218,14 @@ class OrderSyncBatchModel {
       } : batch.tenantId,
       traceId: batch.traceId,
       createdAt: batch.createdAt,
+      logs: (batch.logs ?? []).map(l => ({
+        id: l.id,
+        level: l.level,
+        step: l.step,
+        message: l.message,
+        data: l.data,
+        createdAt: l.createdAt,
+      })),
     };
   }
 }
