@@ -204,7 +204,7 @@ export default class ShopifyFindInStoreBusiness extends CoreClass {
     #ensureStoresMetafieldDefinition = async () => this.#ensureMetafieldDefinition(
         "SHOP",
         this.storesMetafieldKey,
-        "Stores",
+        "stores",
         "Store master data from Nebim for find in store"
     );
 
