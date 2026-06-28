@@ -70,6 +70,8 @@ class TenantModel {
             isColorOptionFirst: true,
             isEnterprise: false,
             isActive: true,
+            currencyCode: null,
+            countryCode: null,
             skuFieldsNebim: [
               SystemCodes.NEBIM_SKU_FIELDS.ITEM_CODE,
               SystemCodes.NEBIM_SKU_FIELDS.COLOR_CODE,
@@ -96,6 +98,7 @@ class TenantModel {
             customerAddressType: '1',
             customerConsentSource: 'HS_WEB',
             orderPosTerminalId: 1,
+            orderIsMicroExport: false,
             procProductDetails: 'sp_GO_GetProductDetails',
             procProductInventory: 'sp_GO_GetProductInventory',
             procProductPrice: 'sp_GO_GetProductPrice',
@@ -118,9 +121,9 @@ class TenantModel {
           create: {
             planKey: 'BASIC', // PlanKey enum value
             billingInterval: 'MONTHLY',
-            orderLimit: 10,
+            orderLimit: SystemCodes.BILLING_PLANS.BASIC.LIMITS.ORDER,
             orderUsed: 0,
-            productDetailsLimit: 500,
+            productDetailsLimit: SystemCodes.BILLING_PLANS.BASIC.LIMITS.PRODUCT_DETAILS,
             productDetailsUsed: 0,
             periodStart: new Date(),
             periodEnd: moment().add(1, 'months').toDate(),
@@ -151,6 +154,8 @@ class TenantModel {
             nebimProductFindInStoreInterval: '*/30 * * * *',
             nebimProductFindInStoreStartDate: moment().subtract(30, 'minutes').toDate(),
             nebimProductFindInStoreIsActive: false,
+            nebimProductMarketSyncInterval: '0 0 * * *',
+            nebimProductMarketSyncIsActive: false,
             redentionLogsInterval: '0 0 * * *',
             redentionLogsStartDate: moment().subtract(1, 'days').toDate(),
             redentionLogsIsActive: true,
@@ -183,6 +188,13 @@ class TenantModel {
     await prisma.scheduleTenant.updateMany({
       where: { tenantId },
       data: { nebimProductFindInStoreIsActive: false },
+    });
+  }
+
+  async disableMarketSyncSchedule(tenantId) {
+    await prisma.scheduleTenant.updateMany({
+      where: { tenantId },
+      data: { nebimProductMarketSyncIsActive: false },
     });
   }
 
@@ -247,9 +259,9 @@ class TenantModel {
         upsert: {
           create: {
             planKey: 'BASIC',
-            orderLimit: 10,
+            orderLimit: SystemCodes.BILLING_PLANS.BASIC.LIMITS.ORDER,
             orderUsed: limitsUpdate.order?.used ?? 0,
-            productDetailsLimit: 500,
+            productDetailsLimit: SystemCodes.BILLING_PLANS.BASIC.LIMITS.PRODUCT_DETAILS,
             productDetailsUsed: limitsUpdate.product_details?.used ?? 0,
             periodStart: new Date(),
             periodEnd: moment().add(1, 'months').toDate(),
@@ -344,7 +356,10 @@ class TenantModel {
       isInventoryTracking: tenant.shopify?.isInventoryTracking ?? true,
       isColorOptionFirst: tenant.shopify?.isColorOptionFirst ?? true,
       isEnterprise: tenant.shopify?.isEnterprise ?? false,
+      isShopifyPlus: tenant.shopify?.isShopifyPlus ?? false,
       isActive: tenant.shopify?.isActive ?? true,
+      currencyCode: tenant.shopify?.currencyCode ?? null,
+      countryCode: tenant.shopify?.countryCode ?? null,
       skuFields: {
         nebim: {
           fields: tenant.shopify?.skuFieldsNebim && tenant.shopify.skuFieldsNebim.length > 0
@@ -378,11 +393,11 @@ class TenantModel {
       },
       limits: {
         order: {
-          limit: tenant.pricing?.orderLimit ?? 10,
+          limit: tenant.pricing?.orderLimit ?? SystemCodes.BILLING_PLANS.BASIC.LIMITS.ORDER,
           used: tenant.pricing?.orderUsed ?? 0,
         },
         product_details: {
-          limit: tenant.pricing?.productDetailsLimit ?? 500,
+          limit: tenant.pricing?.productDetailsLimit ?? SystemCodes.BILLING_PLANS.BASIC.LIMITS.PRODUCT_DETAILS,
           used: tenant.pricing?.productDetailsUsed ?? 0,
         },
       },
@@ -411,6 +426,12 @@ class TenantModel {
             interval: tenant.schedules?.nebimProductFindInStoreInterval || '*/30 * * * *',
             startDate: tenant.schedules?.nebimProductFindInStoreStartDate?.toISOString() || null,
             isActive: tenant.schedules?.nebimProductFindInStoreIsActive ?? false,
+          },
+          market_sync: {
+            interval: tenant.schedules?.nebimProductMarketSyncInterval || '0 0 * * *',
+            isActive: tenant.schedules?.nebimProductMarketSyncIsActive ?? false,
+            priceStartDate: tenant.schedules?.nebimProductMarketPriceStartDate?.toISOString() || null,
+            contentStartDate: tenant.schedules?.nebimProductMarketContentStartDate?.toISOString() || null,
           },
         },
         order: {
@@ -446,6 +467,13 @@ class TenantModel {
       product: {
         categoryKeysFrom: tenant.nebim?.productCategoryKeysFrom || [],
         barcodeTypeCode: tenant.nebim?.productBarcodeTypeCode || 'EAN13',
+        priceSellCode: tenant.nebim?.productPriceSellCode || null,
+        priceCompareCode: tenant.nebim?.productPriceCompareCode || null,
+        responsibilityAreaCode: tenant.nebim?.productResponsibilityAreaCode || null,
+        isColorBased: tenant.nebim?.productIsColorBased ?? false,
+        useInternetOnVariant: tenant.nebim?.productUseInternetOnVariant ?? false,
+        usedSeparatorOnColorAndItem: tenant.nebim?.productUsedSeparatorOnColorAndItem || null,
+        usedSeparatorOnColorAndItemDescriptions: tenant.nebim?.productUsedSeparatorOnColorAndItemDescriptions || null,
       },
       customer: {
         phoneType: tenant.nebim?.customerPhoneType || '7',
@@ -468,6 +496,9 @@ class TenantModel {
         company: tenant.nebim?.orderCompany || null,
         warehouse: tenant.nebim?.orderWarehouse || null,
         cancelReason: tenant.nebim?.orderCancelReason || null,
+        isMicroExport: tenant.nebim?.orderIsMicroExport ?? false,
+        incotermCode1: tenant.nebim?.orderIncotermCode1 || null,
+        incotermCode2: tenant.nebim?.orderIncotermCode2 || null,
       },
       procNames: {
         product: {
@@ -486,6 +517,7 @@ class TenantModel {
         defaults: {
           addressCodes: tenant.nebim?.procDefaultsAddressCodes || 'sp_GO_GetAddressList',
         },
+        inputValidation: tenant.nebim?.procInputValidation || 'sp_GO_InputValidator',
       },
     };
 

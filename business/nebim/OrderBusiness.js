@@ -9,7 +9,6 @@ import FailedOrder from "../../models/db/postgres/FailedOrder.js";
 import SystemCodes from "../../enums/SystemCodes.js";
 import SuccessOrder from "../../models/db/postgres/SuccessOrder.js";
 import LimitBusiness from "../LimitBusiness.js";
-import Tenant from "../../models/db/postgres/Tenant.js";
 
 export default class NebimOrderBusiness extends CoreClass {
     constructor(tenant) {
@@ -36,9 +35,8 @@ export default class NebimOrderBusiness extends CoreClass {
         let skippedFailedOrderCount = 0, skippedAlreadySyncedOrders = 0;
         let successOrders = [], failedOrders = [];
 
-        if (this.tenant.shopify.billing.planKey === SystemCodes.BILLING_PLANS.ENTERPRISE.KEY || this.tenant.shopify.billing.planKey === SystemCodes.BILLING_PLANS.PRO.KEY) {
-            // PRO and ENTERPRISE plans use parallel execution
-            // PRO plan has limit checks, ENTERPRISE skips limit checks
+        if (this.tenant.shopify.billing.planKey === SystemCodes.BILLING_PLANS.ENTERPRISE.KEY) {
+            // ENTERPRISE plan uses parallel execution and skips order limit checks
             for (const order of orderList.filter(x => !x.is_cancelled)) {
                 const isFailedOrderExists = Boolean(await FailedOrder.findOne({ tenant: this.tenant.id, shopifyOrderId: order.order_id, isCancelled: false }));
 
@@ -60,22 +58,7 @@ export default class NebimOrderBusiness extends CoreClass {
                 let customer = {};
 
                 promises.push(SystemHelper.createTransaction(this.tenant, transaction, async () => {
-                    const limitBusiness = new LimitBusiness(await Tenant.findById(this.tenant.id));
                     let orderNumber = "";
-
-                    // Check limit availability for PRO plan (ENTERPRISE skips limit check)
-                    if (this.tenant.shopify.billing.planKey === SystemCodes.BILLING_PLANS.PRO.KEY) {
-                        try {
-                            await limitBusiness.checkLimitAvailability(SystemCodes.LIMIT_TYPE.ORDER, 1);
-                        } catch (error) {
-                            return {
-                                ok: false,
-                                reason: error.message,
-                                ecommerceId: order.order_id,
-                                process: SystemCodes.PROCESS.TOKEN_CHECK,
-                            }
-                        }
-                    }
 
                     try {
                         customer = await this.customerBusiness.syncCustomerFromOrder(order);
@@ -94,8 +77,6 @@ export default class NebimOrderBusiness extends CoreClass {
                         const orderResponse = await this.#createOrder(order, customer);
 
                         orderNumber = orderResponse.OrderNumber;
-
-                        await limitBusiness.useLimit(SystemCodes.LIMIT_TYPE.ORDER, 1) //TODO:order token
 
                         return {
                             ok: true,
@@ -137,6 +118,12 @@ export default class NebimOrderBusiness extends CoreClass {
                 this.logger.info2(`Skipped ${skippedAlreadySyncedOrders} already synced orders`);
             }
         } else {
+            const limitBusiness = new LimitBusiness(this.tenant);
+            // SuccessOrder rows for this batch are persisted by the caller after
+            // createOrders returns, so the derived usage count doesn't move during
+            // the batch — track in-batch successes locally for the limit check.
+            let ordersCreatedThisBatch = 0;
+
             for (const order of orderList.filter(x => !x.is_cancelled)) {
                 const isFailedOrderExists = Boolean(await FailedOrder.findOne({ tenant: this.tenant.id, shopifyOrderId: order.order_id, isCancelled: false }));
 
@@ -163,10 +150,9 @@ export default class NebimOrderBusiness extends CoreClass {
                 let customer = {};
                 
                 const result = await SystemHelper.createTransaction(this.tenant, transaction, async () => {
-                    const limitBusiness = new LimitBusiness(await Tenant.findById(this.tenant.id));
                     let orderNumber = "";
                     try {
-                        await limitBusiness.checkLimitAvailability(SystemCodes.LIMIT_TYPE.ORDER, 1) //TODO: order token
+                        await limitBusiness.checkLimitAvailability(SystemCodes.LIMIT_TYPE.ORDER, 1 + ordersCreatedThisBatch)
                     } catch (error) {
                         return {
                             ok: false,
@@ -194,7 +180,7 @@ export default class NebimOrderBusiness extends CoreClass {
 
                         orderNumber = orderResponse.OrderNumber;
 
-                        await limitBusiness.useLimit(SystemCodes.LIMIT_TYPE.ORDER, 1) //TODO:order token
+                        ordersCreatedThisBatch++;
 
                         return {
                             ok: true,

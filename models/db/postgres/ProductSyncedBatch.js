@@ -54,6 +54,39 @@ class ProductSyncedBatchModel {
   }
 
   /**
+   * Update a product sync batch by id (used to finalize counters at the end of a run)
+   */
+  async update(query, data) {
+    const where = this._buildWhereClause(query);
+    const normalized = this._normalizeFromMongoFormat(data);
+
+    // Only persist fields that were explicitly provided to avoid clobbering with nulls.
+    const updateData = {};
+    if (data.numbers) {
+      if (data.numbers.total !== undefined) updateData.total = data.numbers.total;
+      if (data.numbers.createProductTotal !== undefined) updateData.createProductTotal = data.numbers.createProductTotal;
+      if (data.numbers.createProductSuccess !== undefined) updateData.createProductSuccess = data.numbers.createProductSuccess;
+      if (data.numbers.createProductError !== undefined) updateData.createProductError = data.numbers.createProductError;
+      if (data.numbers.createProductSkippedTotal !== undefined) updateData.createProductSkippedTotal = data.numbers.createProductSkippedTotal;
+      if (data.numbers.createProductSkippedAlreadySynced !== undefined) updateData.createProductSkippedAlreadySynced = data.numbers.createProductSkippedAlreadySynced;
+      if (data.numbers.createProductSkippedFailed !== undefined) updateData.createProductSkippedFailed = data.numbers.createProductSkippedFailed;
+    }
+    if (data.isErrorLogExistsForThisBatch !== undefined) {
+      updateData.isErrorLogExistsForBatch = data.isErrorLogExistsForThisBatch;
+    }
+    if (data.request?.startDate !== undefined) updateData.requestStartDate = normalized.requestStartDate;
+    if (data.request?.endDate !== undefined) updateData.requestEndDate = normalized.requestEndDate;
+
+    const batch = await prisma.productSyncedBatch.update({
+      where: { id: where.id },
+      data: updateData,
+      include: { tenant: true },
+    });
+
+    return this._transformToMongoFormat(batch);
+  }
+
+  /**
    * Delete many product sync batches
    */
   async deleteMany(query) {

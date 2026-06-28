@@ -7,6 +7,7 @@ import NebimOrderBusiness from "./nebim/OrderBusiness.js";
 import ShopifyOrderBusiness from "./shopify/OrderBusiness.js";
 import SuccessOrder from "../models/db/postgres/SuccessOrder.js";
 import RequestLog from "../models/db/postgres/RequestLog.js";
+import LimitBusiness from "./LimitBusiness.js";
 
 export default class OrderBusiness extends CoreClass {
     constructor(tenant) {
@@ -168,6 +169,8 @@ export default class OrderBusiness extends CoreClass {
                     });
                 }
             }
+
+            await new LimitBusiness(this.tenant).syncUsageSnapshot(SystemCodes.LIMIT_TYPE.ORDER);
 
             await OrderSyncBatch.updateOne(
                 { id: orderSyncBatch.id },
@@ -482,6 +485,8 @@ export default class OrderBusiness extends CoreClass {
                     `Başarısız iptal siparişi bulunamadı, iptal adımı atlandı`);
             }
 
+            await new LimitBusiness(this.tenant).syncUsageSnapshot(SystemCodes.LIMIT_TYPE.ORDER);
+
             await this.#logBatchStep(orderSyncBatch.id, 'INFO', 'COMPLETED',
                 `Failed order sync tamamlandı`);
 
@@ -499,6 +504,100 @@ export default class OrderBusiness extends CoreClass {
         } finally {
             this.logger.info(`Sync failed orders finished for ${erp}, ${ecommerce}`);
         }
+    }
+
+    /**
+     * Kurulum sihirbazının "sipariş testi" adımı için tek bir Shopify siparişini Nebim'e gönderir.
+     * Production sync (syncShopifyToNebim) ile aynı createOrders/persist/metafield akışını paylaşır,
+     * böylece test push'u da SuccessOrder'a yazılır ve sonraki production sync'te tekrar gönderilmez.
+     */
+    pushSingleOrder = async (shopifyOrderId) => {
+        const shopifyOrderBusiness = new ShopifyOrderBusiness(this.tenant);
+        const nebimOrderBusiness = new NebimOrderBusiness(this.tenant);
+
+        const orderList = await shopifyOrderBusiness.getOrdersByIds([shopifyOrderId]);
+        if (!orderList || !orderList.length) {
+            throw new Error(`Sipariş bulunamadı: ${shopifyOrderId}`);
+        }
+
+        await nebimOrderBusiness.cacheDefaults();
+        const createOrderResults = await nebimOrderBusiness.createOrders(orderList, true);
+
+        const orderSyncBatch = await OrderSyncBatch.create({
+            request: { orderId: shopifyOrderId },
+            process: SystemCodes.PROCESS.SETUP_TEST_ORDER,
+            tenant: this.tenant.id,
+            traceId: this.traceId,
+            isErrorLogExistsForThisBatch: createOrderResults.failedOrders.length > 0,
+            numbers: {
+                total: orderList.length,
+                createOrderTotal: orderList.filter(x => !x.is_cancelled).length,
+                createOrderSuccess: createOrderResults.successOrders.length,
+                createOrderError: createOrderResults.failedOrders.length,
+                createOrderSkippedTotal: createOrderResults.skippedFailedOrderCount + createOrderResults.skippedAlreadySyncedOrders,
+                createOrderSkippedAlreadySynced: createOrderResults.skippedAlreadySyncedOrders,
+                createOrderSkippedFailed: createOrderResults.skippedFailedOrderCount,
+                cancelOrderTotal: 0,
+                cancelOrderSuccess: 0,
+                cancelOrderError: 0,
+                cancelOrderSkippedTotal: 0,
+                cancelOrderSkippedAlreadySynced: 0,
+                cancelOrderSkippedFailed: 0,
+            }
+        });
+
+        await this.#logBatchStep(orderSyncBatch.id, 'INFO', 'SETUP_TEST_ORDER',
+            `Kurulum testi — Shopify sipariş ${shopifyOrderId} Nebim'e gönderildi`,
+            { shopifyOrderId });
+
+        if (createOrderResults.failedOrders.length) {
+            const failedOrder = createOrderResults.failedOrders[0];
+            await FailedOrder.create({
+                shopifyOrderId: failedOrder.ecommerceId,
+                tenant: this.tenant.id,
+                traceId: this.traceId,
+                syncBatchId: orderSyncBatch.id,
+                reason: failedOrder.reason,
+                process: failedOrder.process
+            });
+            throw new Error(failedOrder.reason || "Sipariş Nebim'e aktarılamadı");
+        }
+
+        if (!createOrderResults.successOrders.length) {
+            throw new Error("Bu sipariş daha önce Nebim'e aktarılmış");
+        }
+
+        const successOrder = createOrderResults.successOrders[0];
+
+        await SuccessOrder.create({
+            tenant: this.tenant.id,
+            traceId: this.traceId,
+            syncBatchId: orderSyncBatch.id,
+            shopifyOrderId: successOrder.ecommerceId,
+            nebimOrderId: successOrder.erpId,
+            lines: successOrder.lines,
+            partiallyCancelledLines: successOrder.partiallyCancelledLines,
+            isCancelled: successOrder.isCancelled,
+            isPartiallyCancelled: successOrder.isPartiallyCancelled,
+        });
+
+        await new LimitBusiness(this.tenant).syncUsageSnapshot(SystemCodes.LIMIT_TYPE.ORDER);
+
+        await shopifyOrderBusiness.updateErpMetadataForOrders([
+            { ecommerceId: successOrder.ecommerceId.split('.')[1], erpId: successOrder.erpId }
+        ]);
+
+        const orderName = successOrder.ecommerceId.split('.')[0];
+        const numericOrderId = successOrder.ecommerceId.split('.')[1]?.split('/').pop();
+        const shop = this.tenant.shopify?.domain || this.tenant.name;
+        const orderAdminUrl = shop && numericOrderId ? `https://${shop}/admin/orders/${numericOrderId}` : null;
+
+        return {
+            erpOrderNumber: successOrder.erpId,
+            shopifyOrderId: successOrder.ecommerceId,
+            orderName,
+            orderAdminUrl,
+        };
     }
 
     syncOrderStatus = async (startDate) => {

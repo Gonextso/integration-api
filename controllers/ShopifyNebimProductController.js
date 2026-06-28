@@ -30,4 +30,20 @@ export default new class ShopifyNebimProductController extends CoreController {
 
         return this.response(res, { status: HttpStatusCodes.ACCEPTED });
     }
+
+    syncMarketPrices = async (req, res) => {
+        const productBusiness = new ProductBusiness(req.tenant);
+
+        productBusiness.syncMarketPricesNebimToShopify(req.startDate, req.endDate);
+
+        return this.response(res, { status: HttpStatusCodes.ACCEPTED });
+    }
+
+    syncMarketContent = async (req, res) => {
+        const productBusiness = new ProductBusiness(req.tenant);
+
+        productBusiness.syncMarketContentNebimToShopify(req.startDate, req.endDate);
+
+        return this.response(res, { status: HttpStatusCodes.ACCEPTED });
+    }
 }

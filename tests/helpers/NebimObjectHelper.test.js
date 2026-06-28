@@ -105,6 +105,53 @@ describe('NebimObjectHelper', () => {
       expect(result[0].title).toBe('Test Product');
     });
 
+    it('should map Notes to product description', () => {
+      const detailList = [
+        {
+          ItemCode: 'ITEM001',
+          ItemDescription: 'Test Product',
+          Notes: 'Some product notes',
+          Barcode: 'BAR001',
+          VatRate: 20,
+          UseInternet: true,
+          IsBlocked: false,
+          ColorDescription: 'Red',
+          ItemDim1Code: 'SIZE',
+        },
+      ];
+
+      const priceList = [
+        { Barcode: 'BAR001', Price: 100, SellPrice: 120, CurrencyCode: 'TRY' },
+      ];
+
+      const result = NebimObjectHelper.getDetailList(detailList, priceList, mockTenant);
+
+      expect(result[0].description).toBe('Some product notes');
+    });
+
+    it('should default description to empty string when Notes is missing', () => {
+      const detailList = [
+        {
+          ItemCode: 'ITEM001',
+          ItemDescription: 'Test Product',
+          Barcode: 'BAR001',
+          VatRate: 20,
+          UseInternet: true,
+          IsBlocked: false,
+          ColorDescription: 'Red',
+          ItemDim1Code: 'SIZE',
+        },
+      ];
+
+      const priceList = [
+        { Barcode: 'BAR001', Price: 100, SellPrice: 120, CurrencyCode: 'TRY' },
+      ];
+
+      const result = NebimObjectHelper.getDetailList(detailList, priceList, mockTenant);
+
+      expect(result[0].description).toBe('');
+    });
+
     it('should handle multiple variants for same product', () => {
       const detailList = [
         {
@@ -186,6 +233,56 @@ describe('NebimObjectHelper', () => {
       const result = NebimObjectHelper.getDetailList(detailList, priceList, mockTenant);
 
       expect(result[0].variants[0].is_blocked_by_erp).toBe(true);
+    });
+
+    it('should set compare_at_price when Price is greater than SellPrice', () => {
+      const detailList = [
+        {
+          ItemCode: 'ITEM001',
+          ItemDescription: 'Test Product',
+          Barcode: 'BAR001',
+          VatRate: 20,
+          UseInternet: true,
+          IsBlocked: false,
+          ColorDescription: 'Red',
+          ItemDim1Code: 'SIZE',
+        },
+      ];
+
+      const priceList = [
+        { Barcode: 'BAR001', Price: 120, SellPrice: 100, CurrencyCode: 'TRY' },
+      ];
+
+      const result = NebimObjectHelper.getDetailList(detailList, priceList, mockTenant);
+
+      expect(result[0].variants[0].base_price).toBe(120);
+      expect(result[0].variants[0].sale_price).toBe(100);
+      expect(result[0].variants[0].compare_at_price).toBe(120);
+    });
+
+    it('should set compare_at_price to null when Price is less than or equal to SellPrice', () => {
+      const detailList = [
+        {
+          ItemCode: 'ITEM001',
+          ItemDescription: 'Test Product',
+          Barcode: 'BAR001',
+          VatRate: 20,
+          UseInternet: true,
+          IsBlocked: false,
+          ColorDescription: 'Red',
+          ItemDim1Code: 'SIZE',
+        },
+      ];
+
+      const priceList = [
+        { Barcode: 'BAR001', Price: 100, SellPrice: 120, CurrencyCode: 'TRY' },
+      ];
+
+      const result = NebimObjectHelper.getDetailList(detailList, priceList, mockTenant);
+
+      expect(result[0].variants[0].base_price).toBe(100);
+      expect(result[0].variants[0].sale_price).toBe(120);
+      expect(result[0].variants[0].compare_at_price).toBeNull();
     });
   });
 
@@ -371,6 +468,90 @@ describe('NebimObjectHelper', () => {
 
       expect(result.Lines[0].ItemCode).toBe('CARGO-LEGACY');
       expect(result.Lines[0].ItemTypeCode).toBe('5');
+    });
+
+    it('should express an order-level discount as TDisRate4 against the merchandise subtotal', () => {
+      const order = {
+        order_id: 'ORDER001',
+        order_date: '2024-01-01',
+        payment: 809.9,
+        last_discount: 100,
+        tags: [],
+        lines: [
+          {
+            barcode: 'BAR001',
+            price: 899.9,
+            quantity: 1,
+            line_id: 'LINE001',
+            line_discount: 0,
+          },
+        ],
+      };
+
+      const customer = { CustomerCode: 'CUST001' };
+
+      const result = NebimObjectHelper.toNebimOrder(mockTenant, order, customer);
+
+      expect(result.TDisRate4).toBeCloseTo((100 / 899.9) * 100, 10);
+    });
+
+    it('should not include TDisRate4 when there is no order-level discount', () => {
+      const order = {
+        order_id: 'ORDER001',
+        order_date: '2024-01-01',
+        payment: 899.9,
+        last_discount: 0,
+        tags: [],
+        lines: [
+          {
+            barcode: 'BAR001',
+            price: 899.9,
+            quantity: 1,
+            line_id: 'LINE001',
+            line_discount: 0,
+          },
+        ],
+      };
+
+      const customer = { CustomerCode: 'CUST001' };
+
+      const result = NebimObjectHelper.toNebimOrder(mockTenant, order, customer);
+
+      expect(result).not.toHaveProperty('TDisRate4');
+    });
+
+    it('should base TDisRate4 on presentment values for micro export orders', () => {
+      mockTenant.nebim.order.isMicroExport = true;
+      mockTenant.shopify.countryCode = 'TR';
+
+      const order = {
+        order_id: 'ORDER001',
+        order_date: '2024-01-01',
+        payment: 809.9,
+        payment_presentment: 250,
+        last_discount: 100,
+        last_discount_presentment: 25,
+        market_currency: 'USD',
+        address: { country: 'US' },
+        tags: [],
+        lines: [
+          {
+            barcode: 'BAR001',
+            price: 899.9,
+            price_presentment: 225,
+            quantity: 1,
+            line_id: 'LINE001',
+            line_discount: 0,
+            line_discount_presentment: 0,
+          },
+        ],
+      };
+
+      const customer = { CustomerCode: 'CUST001' };
+
+      const result = NebimObjectHelper.toNebimOrder(mockTenant, order, customer);
+
+      expect(result.TDisRate4).toBeCloseTo((25 / 225) * 100, 10);
     });
   });
 

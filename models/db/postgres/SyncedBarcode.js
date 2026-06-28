@@ -55,6 +55,23 @@ class SyncedBarcodeModel {
   }
 
   /**
+   * Count synced barcodes by query
+   */
+  async count(query = {}) {
+    try {
+      const where = this._buildWhereClause(query);
+      return await prisma.syncedBarcode.count({ where });
+    } catch (error) {
+      // P2021: Table does not exist - return 0 instead of crashing
+      if (error.code === 'P2021') {
+        console.warn(`[SyncedBarcode] Table does not exist: ${error.meta?.table || 'unknown'}. Returning 0 for count.`);
+        return 0;
+      }
+      throw error;
+    }
+  }
+
+  /**
    * Create synced barcode
    */
   async create(data) {

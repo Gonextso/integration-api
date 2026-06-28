@@ -45,6 +45,10 @@ export default class RedisAPI extends CoreAPI {
         return isLocked === 'OK';
     }
 
+    extendLock = async (key, timeoutSeconds) => {
+        return this.client.expire(key, timeoutSeconds);
+    }
+
     unlock = async key => {
         await this.client.del(key);
     }

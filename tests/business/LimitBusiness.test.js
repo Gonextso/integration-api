@@ -3,13 +3,16 @@ import SystemCodes from '../../enums/SystemCodes.js';
 
 // Mock dependencies before imports
 const mockSuccessOrder = {
-  find: jest.fn(),
-  updateMany: jest.fn(),
+  count: jest.fn(),
+};
+
+const mockSyncedBarcode = {
+  count: jest.fn(),
 };
 
 const mockTenantModel = {
   findById: jest.fn(),
-  save: jest.fn(),
+  updateOne: jest.fn(),
 };
 
 const mockCoreClass = jest.fn().mockImplementation(() => ({
@@ -24,11 +27,15 @@ const mockCoreClass = jest.fn().mockImplementation(() => ({
   }),
 }));
 
-await jest.unstable_mockModule('../../models/db/SuccessOrder.js', () => ({
+await jest.unstable_mockModule('../../models/db/postgres/SuccessOrder.js', () => ({
   default: mockSuccessOrder,
 }));
 
-await jest.unstable_mockModule('../../models/db/Tenant.js', () => ({
+await jest.unstable_mockModule('../../models/db/postgres/SyncedBarcode.js', () => ({
+  default: mockSyncedBarcode,
+}));
+
+await jest.unstable_mockModule('../../models/db/postgres/Tenant.js', () => ({
   default: mockTenantModel,
 }));
 
@@ -45,6 +52,7 @@ describe('LimitBusiness', () => {
   beforeEach(() => {
     mockTenant = {
       _id: 'test-tenant-id',
+      id: 'test-tenant-id',
       shopify: {
         billing: {
           planKey: SystemCodes.BILLING_PLANS.BASIC.KEY,
@@ -60,10 +68,11 @@ describe('LimitBusiness', () => {
           },
         },
       },
-      save: jest.fn(),
     };
 
     jest.clearAllMocks();
+    mockTenantModel.findById.mockResolvedValue(mockTenant);
+    mockTenantModel.updateOne.mockResolvedValue(mockTenant);
     business = new LimitBusiness(mockTenant);
     business.tenant = mockTenant;
   });
@@ -72,76 +81,79 @@ describe('LimitBusiness', () => {
     jest.clearAllMocks();
   });
 
-  describe('clearUsage', () => {
-    it('should clear expired orders and update tenant limits', async () => {
-      const oneMonthAgo = new Date();
-      oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+  describe('getUsage', () => {
+    it('should derive product_details usage from SyncedBarcode count', async () => {
+      mockSyncedBarcode.count.mockResolvedValue(42);
 
-      const expiredOrders = [
-        { _id: 'order1', createdAt: oneMonthAgo },
-        { _id: 'order2', createdAt: oneMonthAgo },
-      ];
+      const used = await business.getUsage('product_details');
 
-      mockSuccessOrder.find.mockResolvedValue(expiredOrders);
-      mockTenantModel.findById.mockResolvedValue(mockTenant);
-      mockTenant.save.mockResolvedValue(mockTenant);
-      mockSuccessOrder.updateMany.mockResolvedValue({});
-
-      await business.clearUsage('order');
-
-      expect(mockSuccessOrder.find).toHaveBeenCalledWith({
-        tenant: mockTenant._id,
-        createdAt: { $lte: expect.any(Date) },
-        cleared: { $ne: true },
-      });
-      expect(mockTenant.shopify.billing.limits.order.used).toBe(48); // 50 - 2
-      expect(mockTenant.save).toHaveBeenCalled();
-      expect(mockSuccessOrder.updateMany).toHaveBeenCalled();
+      expect(used).toBe(42);
+      expect(mockSyncedBarcode.count).toHaveBeenCalledWith({ tenant: mockTenant.id });
+      expect(mockSuccessOrder.count).not.toHaveBeenCalled();
     });
 
-    it('should not update when no expired orders', async () => {
-      mockSuccessOrder.find.mockResolvedValue([]);
+    it('should derive order usage from non-cancelled SuccessOrders in the last month', async () => {
+      mockSuccessOrder.count.mockResolvedValue(7);
 
-      await business.clearUsage('order');
+      const used = await business.getUsage('order');
 
-      expect(mockTenantModel.findById).not.toHaveBeenCalled();
-      expect(mockTenant.save).not.toHaveBeenCalled();
+      expect(used).toBe(7);
+      expect(mockSuccessOrder.count).toHaveBeenCalledWith({
+        tenant: mockTenant.id,
+        isCancelled: false,
+        createdAt: { $gte: expect.any(Date) },
+      });
+
+      const { createdAt } = mockSuccessOrder.count.mock.calls[0][0];
+      const expected = new Date();
+      expected.setMonth(expected.getMonth() - 1);
+      expect(Math.abs(createdAt.$gte.getTime() - expected.getTime())).toBeLessThan(5000);
+      expect(mockSyncedBarcode.count).not.toHaveBeenCalled();
     });
 
     it('should handle uppercase limit type', async () => {
-      const expiredOrders = [{ _id: 'order1' }];
+      mockSyncedBarcode.count.mockResolvedValue(3);
 
-      mockSuccessOrder.find.mockResolvedValue(expiredOrders);
-      mockTenantModel.findById.mockResolvedValue(mockTenant);
-      mockTenant.save.mockResolvedValue(mockTenant);
-      mockSuccessOrder.updateMany.mockResolvedValue({});
+      const used = await business.getUsage('PRODUCT_DETAILS');
 
-      await business.clearUsage('ORDER');
+      expect(used).toBe(3);
+      expect(mockSyncedBarcode.count).toHaveBeenCalledWith({ tenant: mockTenant.id });
+    });
+  });
 
-      expect(mockTenant.shopify.billing.limits.order.used).toBe(49);
+  describe('getRemaining', () => {
+    it('should return limit, derived usage and remaining', async () => {
+      mockSuccessOrder.count.mockResolvedValue(30);
+
+      const result = await business.getRemaining('order');
+
+      expect(mockTenantModel.findById).toHaveBeenCalledWith(mockTenant.id);
+      expect(result).toEqual({ limit: 100, used: 30, remaining: 70, isUnlimited: false });
     });
 
-    it('should not allow negative used limit', async () => {
-      mockTenant.shopify.billing.limits.order.used = 1;
-      const expiredOrders = [
-        { _id: 'order1' },
-        { _id: 'order2' },
-      ];
+    it('should not return negative remaining', async () => {
+      mockSuccessOrder.count.mockResolvedValue(150);
 
-      mockSuccessOrder.find.mockResolvedValue(expiredOrders);
-      mockTenantModel.findById.mockResolvedValue(mockTenant);
-      mockTenant.save.mockResolvedValue(mockTenant);
-      mockSuccessOrder.updateMany.mockResolvedValue({});
+      const result = await business.getRemaining('order');
 
-      await business.clearUsage('order');
+      expect(result.remaining).toBe(0);
+    });
 
-      expect(mockTenant.shopify.billing.limits.order.used).toBe(0); // Math.max(0, 1-2)
+    it('should report unlimited for ENTERPRISE plan', async () => {
+      mockTenant.shopify.billing.planKey = SystemCodes.BILLING_PLANS.ENTERPRISE.KEY;
+      mockSyncedBarcode.count.mockResolvedValue(3000);
+
+      const result = await business.getRemaining('product_details');
+
+      expect(result.isUnlimited).toBe(true);
+      expect(result.remaining).toBe(Infinity);
+      expect(result.used).toBe(3000);
     });
   });
 
   describe('checkLimitAvailability', () => {
     it('should pass when limit is available', async () => {
-      mockSuccessOrder.find.mockResolvedValue([]);
+      mockSuccessOrder.count.mockResolvedValue(50);
 
       await business.checkLimitAvailability('order', 10);
 
@@ -149,17 +161,21 @@ describe('LimitBusiness', () => {
       // Should not throw
     });
 
+    it('should pass exactly at the boundary', async () => {
+      mockSuccessOrder.count.mockResolvedValue(90);
+
+      await business.checkLimitAvailability('order', 10); // 90 + 10 == 100
+    });
+
     it('should throw error when limit is exceeded for BASIC plan', async () => {
-      mockTenant.shopify.billing.limits.order.used = 95;
-      mockSuccessOrder.find.mockResolvedValue([]);
+      mockSuccessOrder.count.mockResolvedValue(95);
 
       await expect(business.checkLimitAvailability('order', 10)).rejects.toThrow('Limit exceed');
     });
 
     it('should not throw error when limit is exceeded for ENTERPRISE plan', async () => {
       mockTenant.shopify.billing.planKey = SystemCodes.BILLING_PLANS.ENTERPRISE.KEY;
-      mockTenant.shopify.billing.limits.order.used = 1000;
-      mockSuccessOrder.find.mockResolvedValue([]);
+      mockSuccessOrder.count.mockResolvedValue(1000);
 
       await business.checkLimitAvailability('order', 10);
 
@@ -167,16 +183,15 @@ describe('LimitBusiness', () => {
       expect(business.logger.info2).toHaveBeenCalled();
     });
 
-    it('should clear usage before checking limit', async () => {
-      mockSuccessOrder.find.mockResolvedValue([]);
+    it('should check product_details against SyncedBarcode count', async () => {
+      mockSyncedBarcode.count.mockResolvedValue(499);
 
-      await business.checkLimitAvailability('order', 10);
-
-      expect(mockSuccessOrder.find).toHaveBeenCalled();
+      await expect(business.checkLimitAvailability('product_details', 2)).rejects.toThrow('Limit exceed');
+      expect(mockSyncedBarcode.count).toHaveBeenCalledWith({ tenant: mockTenant.id });
     });
 
     it('should handle uppercase limit type', async () => {
-      mockSuccessOrder.find.mockResolvedValue([]);
+      mockSyncedBarcode.count.mockResolvedValue(0);
 
       await business.checkLimitAvailability('PRODUCT_DETAILS', 10);
 
@@ -184,37 +199,51 @@ describe('LimitBusiness', () => {
     });
   });
 
-  describe('useLimit', () => {
-    it('should increment used limit', async () => {
-      const initialUsed = mockTenant.shopify.billing.limits.order.used;
-      mockTenantModel.findById.mockResolvedValue(mockTenant);
-      mockTenant.save.mockResolvedValue(mockTenant);
+  describe('syncUsageSnapshot', () => {
+    it('should write derived usage to pricing as an idempotent set', async () => {
+      mockSyncedBarcode.count.mockResolvedValue(42);
 
-      await business.useLimit('order', 5);
+      const written = await business.syncUsageSnapshot('product_details');
 
-      expect(mockTenant.shopify.billing.limits.order.used).toBe(initialUsed + 5);
-      expect(mockTenant.save).toHaveBeenCalled();
+      expect(written).toBe(42);
+      expect(mockTenantModel.updateOne).toHaveBeenCalledWith(
+        { id: mockTenant.id },
+        {
+          'shopify.billing.limits': {
+            product_details: {
+              used: 42,
+            },
+          },
+        }
+      );
     });
 
-    it('should handle uppercase limit type', async () => {
-      const initialUsed = mockTenant.shopify.billing.limits.product_details.used;
-      mockTenantModel.findById.mockResolvedValue(mockTenant);
-      mockTenant.save.mockResolvedValue(mockTenant);
+    it('should write order usage under the order key', async () => {
+      mockSuccessOrder.count.mockResolvedValue(5);
 
-      await business.useLimit('PRODUCT_DETAILS', 10);
+      const written = await business.syncUsageSnapshot('ORDER');
 
-      expect(mockTenant.shopify.billing.limits.product_details.used).toBe(initialUsed + 10);
+      expect(written).toBe(5);
+      expect(mockTenantModel.updateOne).toHaveBeenCalledWith(
+        { id: mockTenant.id },
+        {
+          'shopify.billing.limits': {
+            order: {
+              used: 5,
+            },
+          },
+        }
+      );
     });
 
-    it('should save tenant after updating limit', async () => {
-      mockTenantModel.findById.mockResolvedValue(mockTenant);
-      mockTenant.save.mockResolvedValue(mockTenant);
+    it('should swallow errors and never throw', async () => {
+      mockSyncedBarcode.count.mockRejectedValue(new Error('db down'));
 
-      await business.useLimit('order', 1);
+      const written = await business.syncUsageSnapshot('product_details');
 
-      expect(mockTenantModel.findById).toHaveBeenCalledWith(mockTenant._id);
-      expect(mockTenant.save).toHaveBeenCalled();
+      expect(written).toBeNull();
+      expect(business.logger.error).toHaveBeenCalled();
+      expect(mockTenantModel.updateOne).not.toHaveBeenCalled();
     });
   });
 });
-

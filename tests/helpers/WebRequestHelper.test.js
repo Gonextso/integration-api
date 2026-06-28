@@ -26,13 +26,8 @@ const mockAxios = {
 };
 
 const mockRequestLog = {
-  save: jest.fn(),
+  create: jest.fn().mockResolvedValue(undefined),
 };
-
-const mockRequestLogModel = jest.fn().mockImplementation((data) => ({
-  ...data,
-  save: jest.fn().mockResolvedValue(undefined),
-}));
 
 await jest.unstable_mockModule('../../helpers/LogHelper.js', () => ({
   default: mockLogHelperClass,
@@ -51,11 +46,11 @@ await jest.unstable_mockModule('axios', () => ({
   isAxiosError: mockAxios.isAxiosError,
 }));
 
-await jest.unstable_mockModule('../../models/db/RequestLog.js', () => ({
-  default: mockRequestLogModel,
+await jest.unstable_mockModule('../../models/db/postgres/RequestLog.js', () => ({
+  default: mockRequestLog,
 }));
 
-const { default: WebRequestHelper } = await import('../../helpers/WebRequestHelper.js');
+const { default: WebRequestHelper, resolveBusinessLayerFromStack } = await import('../../helpers/WebRequestHelper.js');
 
 describe('WebRequestHelper', () => {
   let helper;
@@ -190,6 +185,56 @@ describe('WebRequestHelper', () => {
     });
   });
 
+  describe('resolveBusinessLayerFromStack', () => {
+    it('should resolve nebim business class from stack', () => {
+      const stack = `Error
+    at WebRequestHelper.post (/app/helpers/WebRequestHelper.js:43:16)
+    at async connectionProvider (/app/apis/NebimV3IntegratorAPI.js:110:22)
+    at async runProc (/app/apis/NebimV3IntegratorAPI.js:126:5)
+    at async ProductBusiness.getProductDetailList (/app/business/nebim/ProductBusiness.js:79:25)`;
+
+      expect(resolveBusinessLayerFromStack(stack)).toBe('nebim.ProductBusiness');
+    });
+
+    it('should resolve shopify business class from stack', () => {
+      const stack = `Error
+    at WebRequestHelper.gpost (/app/helpers/WebRequestHelper.js:62:16)
+    at async ShopifyGqlAPI.query (/app/apis/ShopifyGqlAPI.js:15:26)
+    at async OrderBusiness.syncOrder (/app/business/shopify/OrderBusiness.js:42:9)`;
+
+      expect(resolveBusinessLayerFromStack(stack)).toBe('shopify.OrderBusiness');
+    });
+
+    it('should resolve root business class from stack', () => {
+      const stack = `Error
+    at WebRequestHelper.post (/app/helpers/WebRequestHelper.js:43:16)
+    at async ProductBusiness.syncDetailsNebimToShopify (/app/business/ProductBusiness.js:126:9)`;
+
+      expect(resolveBusinessLayerFromStack(stack)).toBe('ProductBusiness');
+    });
+
+    it('should prefer controller over api fallback', () => {
+      const stack = `Error
+    at WebRequestHelper.post (/app/helpers/WebRequestHelper.js:43:16)
+    at async NebimV3IntegratorAPI.checkConnection (/app/apis/NebimV3IntegratorAPI.js:28:26)
+    at async NebimConnectionController.testConnection (/app/controllers/NebimConnectionController.js:22:34)`;
+
+      expect(resolveBusinessLayerFromStack(stack)).toBe('controller.NebimConnectionController');
+    });
+
+    it('should fallback to api when no business or controller exists', () => {
+      const stack = `Error
+    at WebRequestHelper.post (/app/helpers/WebRequestHelper.js:43:16)
+    at async ShopifyGqlAPI.getAccessToken (/app/apis/ShopifyGqlAPI.js:72:26)`;
+
+      expect(resolveBusinessLayerFromStack(stack)).toBe('api.ShopifyGqlAPI');
+    });
+
+    it('should return unknown for empty stack', () => {
+      expect(resolveBusinessLayerFromStack('')).toBe('unknown');
+    });
+  });
+
   describe('request logging', () => {
     it('should create RequestLog for successful request', async () => {
       const url = 'https://api.example.com/data';
@@ -202,10 +247,11 @@ describe('WebRequestHelper', () => {
 
       await helper.get(url);
 
-      expect(mockRequestLogModel).toHaveBeenCalled();
-      const logData = mockRequestLogModel.mock.calls[0][0];
+      expect(mockRequestLog.create).toHaveBeenCalled();
+      const logData = mockRequestLog.create.mock.calls[0][0];
       expect(logData.tenant).toBe(mockTenant._id);
       expect(logData.url).toBe(url);
+      expect(logData.businessLayer).toBeDefined();
     });
 
     it('should mask tokens in headers', async () => {

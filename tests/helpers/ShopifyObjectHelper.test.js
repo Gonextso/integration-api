@@ -109,6 +109,68 @@ describe('ShopifyObjectHelper', () => {
       expect(result[0].lines[0].barcode).toBe('BAR001');
     });
 
+    it('should sum discounts across all line items when computing order-level last_discount', () => {
+      const orderList = [
+        {
+          name: 'ORDER001',
+          id: 'gid://shopify/Order/123',
+          createdAt: '2024-01-01T00:00:00Z',
+          totalDiscounts: '130.00',
+          totalDiscountsSet: {
+            presentmentMoney: { amount: '130.00' },
+          },
+          netPayment: '770.00',
+          cancelReason: null,
+          tags: [],
+          customer: {
+            firstName: 'John',
+            lastName: 'Doe',
+            displayName: 'John Doe',
+            emailMarketingConsent: { consentUpdatedAt: '2024-01-01', marketingState: 'SUBSCRIBED' },
+            smsMarketingConsent: { consentUpdatedAt: '2024-01-01', marketingState: 'SUBSCRIBED' },
+          },
+          shippingAddress: {
+            firstName: 'John',
+            lastName: 'Doe',
+            name: 'John Doe',
+            address1: '123 Main St',
+            city: 'Istanbul',
+            address2: 'Kadikoy',
+          },
+          lineItems: {
+            nodes: [
+              {
+                sku: 'SKU001',
+                variant: { barcode: 'BAR001' },
+                refundableQuantity: 1,
+                nonFulfillableQuantity: 0,
+                totalDiscount: '10.00',
+                totalDiscountSet: { presentmentMoney: { amount: '10.00' } },
+                originalUnitPrice: '100.00',
+              },
+              {
+                sku: 'SKU002',
+                variant: { barcode: 'BAR002' },
+                refundableQuantity: 1,
+                nonFulfillableQuantity: 0,
+                totalDiscount: '20.00',
+                totalDiscountSet: { presentmentMoney: { amount: '20.00' } },
+                originalUnitPrice: '200.00',
+              },
+            ],
+          },
+          fulfillmentOrders: { nodes: [] },
+          metafields: { edges: [] },
+        },
+      ];
+
+      const result = ShopifyObjectHelper.getOrderList(orderList);
+
+      // 130 total - (10 + 20) line-level discounts = 100 order-level ("dip") discount
+      expect(result[0].last_discount).toBe(100);
+      expect(result[0].last_discount_presentment).toBe(100);
+    });
+
     it('should filter out orders with order_id metafield', () => {
       const orderList = [
         {
