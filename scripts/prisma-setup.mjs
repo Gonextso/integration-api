@@ -42,9 +42,17 @@ const baselineExistingDatabase = () => {
 };
 
 const extractFailedMigrationName = output => {
-    const match = output.match(/The `([^`]+)` migration started at .+ failed/);
-    return match?.[1];
+    const p3009Match = output.match(/The `([^`]+)` migration started at .+ failed/);
+    if (p3009Match) {
+        return p3009Match[1];
+    }
+
+    const p3018Match = output.match(/Migration name: ([^\n]+)/);
+    return p3018Match?.[1]?.trim();
 };
+
+const isDuplicateSchemaObjectError = output =>
+    /42701|42P07|duplicate_column|duplicate_table|already exists/i.test(output);
 
 /**
  * P3009 means a previous deploy left a migration marked as failed (e.g. the
@@ -55,45 +63,61 @@ const extractFailedMigrationName = output => {
  * the retry is a no-op against whatever already landed and simply continues
  * from there. If the underlying SQL has a real bug, the retry fails again
  * and that error surfaces normally.
+ *
+ * P3018 with duplicate-object errors means the DDL partially or fully landed
+ * before Prisma recorded success. Marking the migration as applied lets deploy
+ * continue without re-running non-idempotent SQL.
  */
-const recoverFailedMigration = output => {
+const recoverFromDeployFailure = output => {
     const name = extractFailedMigrationName(output);
     if (!name) {
         return false;
     }
 
-    console.warn(
-        `[prisma-setup] Migration "${name}" is marked as failed (P3009). Marking it ` +
-        "rolled back and retrying — migrations are written to be idempotent, so a clean " +
-        "retry is expected to succeed.",
-    );
-    run(`npx prisma migrate resolve --rolled-back "${name}"`);
-    return true;
+    if (/P3018/.test(output) && isDuplicateSchemaObjectError(output)) {
+        console.warn(
+            `[prisma-setup] Migration "${name}" failed because the schema change already exists. ` +
+            "Marking it as applied and continuing.",
+        );
+        run(`npx prisma migrate resolve --applied "${name}"`);
+        return true;
+    }
+
+    if (/P3009/.test(output)) {
+        console.warn(
+            `[prisma-setup] Migration "${name}" is marked as failed (P3009). Marking it ` +
+            "rolled back and retrying — migrations are written to be idempotent, so a clean " +
+            "retry is expected to succeed.",
+        );
+        run(`npx prisma migrate resolve --rolled-back "${name}"`);
+        return true;
+    }
+
+    return false;
 };
 
 const deployMigrations = () => {
-    let attempt = runCapture("npx prisma migrate deploy");
-    if (attempt.ok) {
-        process.stdout.write(attempt.output);
-        return;
-    }
+    const maxRecoveryAttempts = 10;
 
-    if (/P3005/.test(attempt.output)) {
-        baselineExistingDatabase();
-        run("npx prisma migrate deploy");
-        return;
-    }
-
-    if (/P3009/.test(attempt.output) && recoverFailedMigration(attempt.output)) {
-        attempt = runCapture("npx prisma migrate deploy");
+    for (let attemptIndex = 0; attemptIndex <= maxRecoveryAttempts; attemptIndex++) {
+        const attempt = runCapture("npx prisma migrate deploy");
         if (attempt.ok) {
             process.stdout.write(attempt.output);
             return;
         }
-    }
 
-    process.stderr.write(attempt.output);
-    throw attempt.error;
+        if (/P3005/.test(attempt.output)) {
+            baselineExistingDatabase();
+            continue;
+        }
+
+        if (attemptIndex < maxRecoveryAttempts && recoverFromDeployFailure(attempt.output)) {
+            continue;
+        }
+
+        process.stderr.write(attempt.output);
+        throw attempt.error;
+    }
 };
 
 const generateClient = () => {
