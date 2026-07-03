@@ -64,19 +64,11 @@ await jest.unstable_mockModule('../../../models/db/SyncedBarcode.js', () => ({
   default: mockSyncedBarcode,
 }));
 
-await jest.unstable_mockModule('../../../models/db/postgres/SyncedBarcode.js', () => ({
-  default: mockSyncedBarcode,
-}));
-
 await jest.unstable_mockModule('../../../business/LimitBusiness.js', () => ({
   default: mockLimitBusinessClass,
 }));
 
 await jest.unstable_mockModule('../../../models/db/Tenant.js', () => ({
-  default: mockTenantModel,
-}));
-
-await jest.unstable_mockModule('../../../models/db/postgres/Tenant.js', () => ({
   default: mockTenantModel,
 }));
 
@@ -92,7 +84,6 @@ await jest.unstable_mockModule('../../../enums/CacheFields.js', () => ({
   default: {
     SYSTEM: {
       PRODUCT_SYNC_BARCODE_LOCK: 'product_sync_barcode_lock',
-      PRODUCT_SYNC_TENANT_LOCK: 'product_sync_tenant_lock',
     },
   },
 }));
@@ -173,50 +164,40 @@ describe('ShopifyProductBusiness', () => {
       mockSyncedBarcode.find.mockResolvedValue([]);
       mockTenantModel.findById.mockResolvedValue(mockTenant);
       mockLimitBusiness.checkLimitAvailability.mockResolvedValue(undefined);
-      mockApi.query.mockImplementation(async (query) => {
-        if (query.includes('productSet(')) {
-          return {
-            data: {
-              productSet: {
-                product: {
-                  id: 'gid://shopify/Product/1',
-                  variants: {
-                    nodes: [
-                      { id: 'gid://shopify/ProductVariant/1' },
-                    ],
-                  },
+      mockApi.query
+        .mockResolvedValueOnce({
+          data: {
+            productSet: {
+              product: {
+                id: 'gid://shopify/Product/1',
+                variants: {
+                  nodes: [
+                    { id: 'gid://shopify/ProductVariant/1' },
+                  ],
                 },
-                userErrors: [],
               },
+              userErrors: [],
             },
-          };
-        }
-
-        if (query.includes('metafieldDefinitions')) {
-          return {
-            data: {
-              metafieldDefinitions: {
-                edges: [],
-              },
+          },
+        })
+        .mockResolvedValueOnce({
+          data: {
+            metafieldDefinitions: {
+              edges: [],
             },
-            errors: undefined,
-          };
-        }
-
-        if (query.includes('metafieldDefinitionCreate')) {
-          return {
-            data: {
-              metafieldDefinitionCreate: {
-                metafieldDefinition: { id: 'def1' },
-                userErrors: [],
-              },
+          },
+          errors: undefined,
+        })
+        // Mock for metafield definition create (if needed)
+        .mockResolvedValue({
+          data: {
+            metafieldDefinitionCreate: {
+              metafieldDefinition: { id: 'def1' },
+              userErrors: [],
             },
-            errors: undefined,
-          };
-        }
-
-        return { data: {} };
-      });
+          },
+          errors: undefined,
+        });
 
       mockSyncedBarcode.updateOne.mockResolvedValue({});
 
@@ -392,50 +373,40 @@ describe('ShopifyProductBusiness', () => {
       mockSyncedBarcode.find.mockResolvedValue([existingSync]);
       mockTenantModel.findById.mockResolvedValue(mockTenant);
       mockLimitBusiness.checkLimitAvailability.mockResolvedValue(undefined);
-      mockApi.query.mockImplementation(async (query) => {
-        if (query.includes('productSet(')) {
-          return {
-            data: {
-              productSet: {
-                product: {
-                  id: 'gid://shopify/Product/1',
-                  variants: {
-                    nodes: [
-                      { id: 'gid://shopify/ProductVariant/1' },
-                    ],
-                  },
+      mockApi.query
+        .mockResolvedValueOnce({
+          data: {
+            productSet: {
+              product: {
+                id: 'gid://shopify/Product/1',
+                variants: {
+                  nodes: [
+                    { id: 'gid://shopify/ProductVariant/1' },
+                  ],
                 },
-                userErrors: [],
               },
+              userErrors: [],
             },
-          };
-        }
-
-        if (query.includes('metafieldDefinitions')) {
-          return {
-            data: {
-              metafieldDefinitions: {
-                edges: [],
-              },
+          },
+        })
+        .mockResolvedValueOnce({
+          data: {
+            metafieldDefinitions: {
+              edges: [],
             },
-            errors: undefined,
-          };
-        }
-
-        if (query.includes('metafieldDefinitionCreate')) {
-          return {
-            data: {
-              metafieldDefinitionCreate: {
-                metafieldDefinition: { id: 'def1' },
-                userErrors: [],
-              },
+          },
+          errors: undefined,
+        })
+        // Mock for metafield definition create (if needed)
+        .mockResolvedValue({
+          data: {
+            metafieldDefinitionCreate: {
+              metafieldDefinition: { id: 'def1' },
+              userErrors: [],
             },
-            errors: undefined,
-          };
-        }
-
-        return { data: {} };
-      });
+          },
+          errors: undefined,
+        });
 
       mockSyncedBarcode.updateOne.mockResolvedValue({});
 
@@ -600,7 +571,7 @@ describe('ShopifyProductBusiness', () => {
       });
     });
 
-    it('should handle GraphQL errors gracefully', async () => {
+    it('should send compareAtPrice when variant has compare_at_price', async () => {
       const detailList = [
         {
           erp_id: 'ITEM001',
@@ -612,7 +583,8 @@ describe('ShopifyProductBusiness', () => {
               sku: 'SKU001',
               color: 'Red',
               dimention: 'M',
-              sale_price: '100.00',
+              sale_price: 100,
+              compare_at_price: 120,
             },
           ],
           attributes: [],
@@ -622,9 +594,49 @@ describe('ShopifyProductBusiness', () => {
       mockSyncedBarcode.find.mockResolvedValue([]);
       mockTenantModel.findById.mockResolvedValue(mockTenant);
       mockLimitBusiness.checkLimitAvailability.mockResolvedValue(undefined);
-      mockApi.query.mockResolvedValue({
-        errors: [{ message: 'GraphQL Error' }],
+      mockApi.query.mockImplementation(async (query) => {
+        if (query.includes('productSet(')) {
+          return {
+            data: {
+              productSet: {
+                product: {
+                  id: 'gid://shopify/Product/1',
+                  variants: {
+                    nodes: [{ id: 'gid://shopify/ProductVariant/1' }],
+                  },
+                },
+                userErrors: [],
+              },
+            },
+          };
+        }
+
+        if (query.includes('metafieldDefinitions')) {
+          return {
+            data: {
+              metafieldDefinitions: {
+                edges: [],
+              },
+            },
+            errors: undefined,
+          };
+        }
+
+        if (query.includes('metafieldDefinitionCreate')) {
+          return {
+            data: {
+              metafieldDefinitionCreate: {
+                metafieldDefinition: { id: 'def1' },
+                userErrors: [],
+              },
+            },
+            errors: undefined,
+          };
+        }
+
+        return { data: {} };
       });
+      mockSyncedBarcode.updateOne.mockResolvedValue({});
 
       await business.syncProductsDetailBulk(detailList);
 
