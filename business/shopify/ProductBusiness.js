@@ -5,6 +5,8 @@ import productMutations from "../../models/shopify/mutations/product.js";
 import metafieldQueries from "../../models/shopify/queries/metafield.js";
 import metafieldMutations from "../../models/shopify/mutations/metafield.js";
 import SyncedBarcode from "../../models/db/postgres/SyncedBarcode.js";
+import ProductSyncedBatch from "../../models/db/postgres/ProductSyncedBatch.js";
+import ProductBatchLog from "../../models/db/postgres/ProductBatchLog.js";
 import LimitBusiness from "../LimitBusiness.js";
 import SystemCodes from "../../enums/SystemCodes.js";
 import SystemHelper from "../../helpers/SystemHelper.js";
@@ -23,7 +25,19 @@ export default class ShopifyProductBusiness extends CoreClass {
         compareAtPrice: variant.compare_at_price ?? null,
     });
 
-    syncProductsDetailBulk = async (detailList, categoryList = []) => {
+    /**
+     * Adım adım batch logu yazar. Hata fırlatmaz — log yazılamasa bile ana akış devam eder.
+     */
+    #logBatchStep = async (batchId, level, step, message, data = undefined) => {
+        if (!batchId) return;
+        try {
+            await ProductBatchLog.create({ productSyncedBatchId: batchId, level, step, message, data });
+        } catch (err) {
+            this.logger.warn(`ProductBatchLog yazılamadı (${step}): ${err?.message}`);
+        }
+    }
+
+    syncProductsDetailBulk = async (detailList, categoryList = [], options = {}) => {
         const tenantSyncCache = new SystemCache(this.tenant);
         const TENANT_LOCK_TTL = 600; // seconds; heartbeat below renews it while the run is alive
 
@@ -37,20 +51,46 @@ export default class ShopifyProductBusiness extends CoreClass {
                 .catch(error => this.logger.error(new Error(`Failed to extend product sync tenant lock: ${error.message}`)));
         }, 300000);
 
+        // Batch kaydı sadece gerçekten çalışan koşular için oluşturulur; kilit
+        // alınamayan (atlanan) koşular boş batch üretmesin diye kilitten sonra.
+        // Heartbeat başladıktan sonraki her şey try içinde olmalı — aradaki bir
+        // hata interval'i sızdırırsa kilit sonsuza dek tazelenir.
+        let batchId = null;
         try {
-            await this.#syncProductsDetailBulkLocked(detailList, categoryList);
+            try {
+                const batch = await ProductSyncedBatch.create({
+                    process: SystemCodes.PROCESS.SYNC_PRODUCTS,
+                    request: { startDate: options.startDate ?? null, endDate: null },
+                    tenant: this.tenant.id,
+                    traceId: this.traceId,
+                });
+                batchId = batch?.id ?? null;
+            } catch (err) {
+                this.logger.warn(`ProductSyncedBatch oluşturulamadı: ${err?.message}`);
+            }
+
+            await this.#logBatchStep(batchId, 'INFO', 'START',
+                `Ürün detay senkronu başlatıldı — ${detailList.length} ürün`,
+                { total: detailList.length, startDate: options.startDate ?? null });
+
+            await this.#syncProductsDetailBulkLocked(detailList, categoryList, batchId);
+        } catch (error) {
+            await this.#logBatchStep(batchId, 'ERROR', 'FATAL',
+                `Ürün detay senkronu hata ile kesildi: ${error?.message ?? String(error)}`);
+            throw error;
         } finally {
             clearInterval(lockHeartbeat);
             await tenantSyncCache.unlock(CacheFields.SYSTEM.PRODUCT_SYNC_TENANT_LOCK);
         }
     }
 
-    #syncProductsDetailBulkLocked = async (detailList, categoryList) => {
+    #syncProductsDetailBulkLocked = async (detailList, categoryList, batchId = null) => {
         const mutation = productMutations.sync;
         const metafields = new Set();
         const variantMetafields = new Set();
         const variantBlockedMetafieldKey = "gonextso_nebim_app.is_blocked_by_erp";
         const limitBusiness = new LimitBusiness(this.tenant);
+        const stats = { success: 0, error: 0, skippedOffline: 0, skippedLimit: 0, skippedLock: 0 };
         let promises = [];
         const slug = text => text.replace(/ /g, "-").toLowerCase();
 
@@ -87,6 +127,7 @@ export default class ShopifyProductBusiness extends CoreClass {
 
             if (blockWhenOff && isFullyOffline && !existingProductId) {
                 this.logger.info2(`Skipping offline product creation for ${product.erp_id}`);
+                stats.skippedOffline++;
                 continue;
             }
 
@@ -102,6 +143,10 @@ export default class ShopifyProductBusiness extends CoreClass {
                         await limitBusiness.checkLimitAvailability(SystemCodes.LIMIT_TYPE.PRODUCT_DETAILS, newVariants.length);
                     } catch (error) {
                         this.logger.warn2(`SKU limit exceed: product ${product.erp_id} needs ${newVariants.length} new SKUs, skipping`);
+                        stats.skippedLimit++;
+                        await this.#logBatchStep(batchId, 'WARN', 'SKU_LIMIT_SKIP',
+                            `SKU limiti dolu — ürün ${product.erp_id} atlandı (${newVariants.length} yeni SKU gerekiyordu)`,
+                            { erpId: product.erp_id, newVariantCount: newVariants.length });
                         continue;
                     }
                 }
@@ -184,6 +229,7 @@ export default class ShopifyProductBusiness extends CoreClass {
                 if (data?.data?.productSet?.userErrors?.some(error => error.message === "Product does not exist")) {
                     if (blockWhenOff && isFullyOffline) {
                         this.logger.warn2(`Offline product ${product.erp_id} not found in Shopify, skipping creation`);
+                        stats.skippedOffline++;
                         continue;
                     }
                     this.logger.warn2(`Product ${existingProductId} does not exist in Shopify, retrying without ID to create new product`);
@@ -195,6 +241,10 @@ export default class ShopifyProductBusiness extends CoreClass {
 
                 if (!data || data.errors || data.userErrors || (data.data?.productSet?.userErrors && data.data.productSet.userErrors.length > 0)) {
                     this.logger.error('GraphQL Errors:', JSON.stringify(data?.errors || data?.data?.productSet?.userErrors || data));
+                    stats.error++;
+                    await this.#logBatchStep(batchId, 'ERROR', 'GRAPHQL_ERROR',
+                        `Ürün ${product.erp_id} Shopify'a yazılamadı`,
+                        { erpId: product.erp_id, errors: data?.errors ?? data?.data?.productSet?.userErrors ?? null });
                     continue;
                 }
 
@@ -229,6 +279,8 @@ export default class ShopifyProductBusiness extends CoreClass {
                         { upsert: true }
                     );
                 }
+
+                stats.success++;
             } else if (this.tenant.shopify.billing.planKey === SystemCodes.BILLING_PLANS.ENTERPRISE.KEY) {
                 promises.push(async () => {
                     this.logger.info4(`Syncing product ${product.erp_id} in parallel`);
@@ -243,6 +295,10 @@ export default class ShopifyProductBusiness extends CoreClass {
                         
                         if (!lockKeys) {
                             this.logger.warn2(`Could not acquire locks for product ${product.erp_id} barcodes, skipping`);
+                            stats.skippedLock++;
+                            await this.#logBatchStep(batchId, 'WARN', 'BARCODE_LOCK_SKIP',
+                                `Barkod kilidi alınamadı — ürün ${product.erp_id} atlandı`,
+                                { erpId: product.erp_id });
                             return;
                         }
 
@@ -274,6 +330,7 @@ export default class ShopifyProductBusiness extends CoreClass {
 
                         if (blockWhenOff && localIsFullyOffline && !localExistingProductId) {
                             this.logger.info2(`Skipping offline product creation for ${product.erp_id}`);
+                            stats.skippedOffline++;
                             return;
                         }
 
@@ -354,6 +411,7 @@ export default class ShopifyProductBusiness extends CoreClass {
                         if (data?.data?.productSet?.userErrors?.some(error => error.message === "Product does not exist")) {
                             if (blockWhenOff && localIsFullyOffline) {
                                 this.logger.warn2(`Offline product ${product.erp_id} not found in Shopify, skipping creation`);
+                                stats.skippedOffline++;
                                 return;
                             }
                             this.logger.warn2(`Product ${localExistingProductId} does not exist in Shopify, retrying without ID to create new product`);
@@ -365,6 +423,10 @@ export default class ShopifyProductBusiness extends CoreClass {
 
                         if (data.errors || data.userErrors || (data.data?.productSet?.userErrors && data.data.productSet.userErrors.length > 0)) {
                             this.logger.error('GraphQL Errors:', JSON.stringify(data?.errors || data?.data?.productSet?.userErrors || data));
+                            stats.error++;
+                            await this.#logBatchStep(batchId, 'ERROR', 'GRAPHQL_ERROR',
+                                `Ürün ${product.erp_id} Shopify'a yazılamadı`,
+                                { erpId: product.erp_id, errors: data?.errors ?? data?.data?.productSet?.userErrors ?? null });
                             return;
                         }
 
@@ -401,6 +463,8 @@ export default class ShopifyProductBusiness extends CoreClass {
                                 { upsert: true }
                             );
                         }
+
+                        stats.success++;
                     } finally {
                         // Always release locks, even if error occurred
                         if (lockKeys) {
@@ -441,7 +505,29 @@ export default class ShopifyProductBusiness extends CoreClass {
         await this.#setMetafieldDefinitions(metafields, "PRODUCT");
         await this.#setMetafieldDefinitions(variantMetafields, "PRODUCTVARIANT");
 
-        await limitBusiness.syncUsageSnapshot(SystemCodes.LIMIT_TYPE.PRODUCT_DETAILS);
+        const usage = await limitBusiness.syncUsageSnapshot(SystemCodes.LIMIT_TYPE.PRODUCT_DETAILS);
+
+        const skippedTotal = stats.skippedOffline + stats.skippedLimit + stats.skippedLock;
+        if (batchId) {
+            try {
+                await ProductSyncedBatch.update({ id: batchId }, {
+                    numbers: {
+                        total: detailList.length,
+                        createProductTotal: stats.success + stats.error,
+                        createProductSuccess: stats.success,
+                        createProductError: stats.error,
+                        createProductSkippedTotal: skippedTotal,
+                    },
+                    isErrorLogExistsForThisBatch: stats.error > 0,
+                });
+            } catch (err) {
+                this.logger.warn(`ProductSyncedBatch güncellenemedi: ${err?.message}`);
+            }
+        }
+
+        await this.#logBatchStep(batchId, stats.error > 0 ? 'WARN' : 'INFO', 'DONE',
+            `Ürün detay senkronu tamamlandı — başarılı: ${stats.success}, hatalı: ${stats.error}, atlanan: ${skippedTotal} (limit: ${stats.skippedLimit}, offline: ${stats.skippedOffline}, kilit: ${stats.skippedLock})${usage !== null ? `, SKU kullanımı: ${usage}` : ''}`,
+            { ...stats, skippedTotal, usage });
     }
 
     #setMetafieldDefinitions = async (metafields, ownerType) => {
@@ -514,7 +600,7 @@ export default class ShopifyProductBusiness extends CoreClass {
                 continue;
             }
 
-            if (createData.data.metafieldDefinitionCreate.userErrors && createData.data.metafieldDefinitionCreate.userErrors.length > 0) {
+            if (createData.data?.metafieldDefinitionCreate?.userErrors && createData.data.metafieldDefinitionCreate.userErrors.length > 0) {
                 this.logger.error('User Errors when creating metafield definition:', JSON.stringify(createData.data.metafieldDefinitionCreate.userErrors));
                 continue;
             }
