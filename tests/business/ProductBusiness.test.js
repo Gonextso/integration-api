@@ -83,7 +83,7 @@ describe('ProductBusiness', () => {
       await business.syncDetailsNebimToShopify(startDate, null);
 
       expect(mockNebimProductBusiness.getProductDetailList).toHaveBeenCalledWith(startDate);
-      expect(mockShopifyProductBusiness.syncProductsDetailBulk).toHaveBeenCalledWith(detailList);
+      expect(mockShopifyProductBusiness.syncProductsDetailBulk).toHaveBeenCalledWith(detailList, [], { startDate: '2024-01-01' });
       expect(business.logger.info2).toHaveBeenCalledWith(
         `Sync product details started from ${startDate}`
       );
@@ -100,7 +100,7 @@ describe('ProductBusiness', () => {
 
       await business.syncDetailsNebimToShopify(startDate, null);
 
-      expect(mockShopifyProductBusiness.syncProductsDetailBulk).toHaveBeenCalledWith([]);
+      expect(mockShopifyProductBusiness.syncProductsDetailBulk).toHaveBeenCalledWith([], [], { startDate: '2024-01-01' });
     });
 
     it('should handle errors gracefully', async () => {
