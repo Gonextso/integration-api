@@ -42,9 +42,19 @@ class ProductSyncedBatchModel {
    */
   async create(data) {
     const normalized = this._normalizeFromMongoFormat(data);
-    
+
+    // Because we include the tenant relation, Prisma requires the relation form
+    // instead of the scalar tenantId. Convert it to a connect.
+    const createData = { ...normalized };
+    if (normalized.tenantId) {
+      createData.tenant = {
+        connect: { id: normalized.tenantId },
+      };
+      delete createData.tenantId;
+    }
+
     const batch = await prisma.productSyncedBatch.create({
-      data: normalized,
+      data: createData,
       include: {
         tenant: true,
       },
