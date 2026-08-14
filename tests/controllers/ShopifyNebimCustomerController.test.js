@@ -99,6 +99,18 @@ describe('ShopifyNebimCustomerController', () => {
       });
     });
 
+    it('should return bad request when consent date is missing', async () => {
+      mockCustomerBusiness.updateConsent.mockResolvedValue({ skipped: true, reason: 'missing_consent_date' });
+
+      await ShopifyNebimCustomerController.updateConsent(mockReq, mockRes);
+
+      expect(mockCoreController.response).toHaveBeenCalledWith(mockRes, {
+        status: HttpStatusCodes.BAD_REQUEST,
+        info: 'missing_consent_date',
+        content: { skipped: true, reason: 'missing_consent_date' },
+      });
+    });
+
     it('should return not found when customer does not exist in Nebim', async () => {
       mockCustomerBusiness.updateConsent.mockResolvedValue(null);
 

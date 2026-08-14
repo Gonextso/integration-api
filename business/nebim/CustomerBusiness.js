@@ -197,13 +197,15 @@ export default class NebimCustomerClass extends CoreClass {
 
         if (!nebimCustomer) return null;
 
-        const nowIso = new Date().toISOString();
-        const emailConsentRaw = customer?.consents?.email?.date ?? nowIso;
-        const gsmConsentRaw = customer?.consents?.gsm?.date ?? nowIso;
+        const emailConsentRaw = customer?.consents?.email?.date;
+        const gsmConsentRaw = customer?.consents?.gsm?.date;
+        const consentRaw = communicationType === "gsm" ? gsmConsentRaw : emailConsentRaw;
+        if (!consentRaw) return { skipped: true, reason: "missing_consent_date" };
+
         const emailOptIn = customer?.consents?.email?.is_opt_in ?? false;
         const gsmOptIn = customer?.consents?.gsm?.is_opt_in ?? false;
-        const [ emailConsentDate, emailConsentTimeZ ] = emailConsentRaw.split("T");
-        const [ gsmConsentDate, gsmConsentTimeZ ] = gsmConsentRaw.split("T");
+        const [ emailConsentDate, emailConsentTimeZ ] = (emailConsentRaw ?? "").split("T");
+        const [ gsmConsentDate, gsmConsentTimeZ ] = (gsmConsentRaw ?? "").split("T");
 
         const result = await this.api.post({
             ModelType: 3,

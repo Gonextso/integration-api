@@ -36,6 +36,14 @@ export default new class ShopifyNebimCustomerController extends CoreController {
             });
         }
 
+        if (result.skipped) {
+            return this.response(res, {
+                status: HttpStatusCodes.BAD_REQUEST,
+                info: result.reason,
+                content: result
+            });
+        }
+
         return this.response(res, {
             status: HttpStatusCodes.SUCCESS,
             content: result

@@ -557,6 +557,19 @@ describe('NebimCustomerBusiness', () => {
       });
     });
 
+    it('should skip post when consent date is missing', async () => {
+      mockApi.runProcReturnSingle.mockResolvedValue({ CustomerCode: 'CUST001' });
+      mockApi.getModel.mockResolvedValue({ CurrAccCode: 'CUST001' });
+
+      const result = await business.updateConsent({
+        email: 'test@example.com',
+        consents: { email: { is_opt_in: true } },
+      }, 'email');
+
+      expect(mockApi.post).not.toHaveBeenCalled();
+      expect(result).toEqual({ skipped: true, reason: 'missing_consent_date' });
+    });
+
     it('should return null when customer is not in Nebim', async () => {
       mockApi.runProcReturnSingle.mockResolvedValue({});
 
