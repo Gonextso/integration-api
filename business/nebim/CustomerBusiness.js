@@ -103,6 +103,14 @@ export default class NebimCustomerClass extends CoreClass {
             DistrictCode: addressCodes.DistrictCode,
             Address: address.address_text
         };
+        const nowIso = new Date().toISOString();
+        const emailConsentRaw = customer?.consents?.email?.date ?? nowIso;
+        const gsmConsentRaw = customer?.consents?.gsm?.date ?? nowIso;
+        const emailOptIn = customer?.consents?.email?.is_opt_in ?? false;
+        const gsmOptIn = customer?.consents?.gsm?.is_opt_in ?? false;
+        const [ emailConsentDate, emailConsentTimeZ ] = emailConsentRaw.split("T");
+        const [ gsmConsentDate, gsmConsentTimeZ ] = gsmConsentRaw.split("T");
+
         const base = {
             ModelType: 3,
             FirstName: customer.first_name,
@@ -125,7 +133,44 @@ export default class NebimCustomerClass extends CoreClass {
                 EmailPermission: true,
                 AddressPermission: true
             }] : [],
-            Communications: this.#buildCommunications(customer),
+            Communications: [
+                {
+                    CommunicationTypeCode: "3",
+                    CommAddress: customer.email,
+                    OptInOptOutStatusIntegrator: (this.tenant.nebim.customer.confirmationFormTypeCode && this.tenant.nebim.customer.confirmationFormStatusCode) ? {
+                        Call: false,
+                        CompanyBrandCode: "",
+                        ConfirmationFormStatusCode: this.tenant.nebim.customer.confirmationFormStatusCode, 
+                        ConfirmationFormTypeCode: this.tenant.nebim.customer.confirmationFormTypeCode, 
+                        ConsentDate: emailConsentDate,
+                        ConsentTime: emailConsentTimeZ.replace("Z", "").split(".")[0],
+                        ConsentSource: this.tenant.nebim.customer.consentSource,
+                        Email: true,
+                        FormNumber: "digital",
+                        OptIn: emailOptIn,
+                        RecipientType: 1,
+                        SMS: false
+                    } : {}
+                },
+                {
+                    CommunicationTypeCode: this.tenant.nebim.customer.phoneType,
+                    CommAddress: customer.phone,
+                    OptInOptOutStatusIntegrator: (this.tenant.nebim.customer.confirmationFormTypeCode && this.tenant.nebim.customer.confirmationFormStatusCode) ? {
+                        Call: true,
+                        CompanyBrandCode: "",
+                        ConfirmationFormStatusCode: this.tenant.nebim.customer.confirmationFormStatusCode, 
+                        ConfirmationFormTypeCode: this.tenant.nebim.customer.confirmationFormTypeCode, 
+                        ConsentDate: gsmConsentDate,
+                        ConsentTime: gsmConsentTimeZ.replace("Z", "").split(".")[0],
+                        ConsentSource: this.tenant.nebim.customer.consentSource,
+                        Email: false,
+                        FormNumber: "digital",
+                        OptIn: gsmOptIn,
+                        RecipientType: 1,
+                        SMS: true
+                    } : {}
+                }
+            ],
             Contacts: [is_receiver_not_customer ? {
                 ContactTypeCode: "C",
                 FirstName: address.first_name,
@@ -152,80 +197,57 @@ export default class NebimCustomerClass extends CoreClass {
 
         if (!nebimCustomer) return null;
 
-        const communications = this.#buildCommunications(customer);
-        const communicationsToSend = communicationType === "email"
-            ? [communications[0]]
-            : communicationType === "gsm"
-                ? [communications[1]]
-                : communications;
+        const nowIso = new Date().toISOString();
+        const emailConsentRaw = customer?.consents?.email?.date ?? nowIso;
+        const gsmConsentRaw = customer?.consents?.gsm?.date ?? nowIso;
+        const emailOptIn = customer?.consents?.email?.is_opt_in ?? false;
+        const gsmOptIn = customer?.consents?.gsm?.is_opt_in ?? false;
+        const [ emailConsentDate, emailConsentTimeZ ] = emailConsentRaw.split("T");
+        const [ gsmConsentDate, gsmConsentTimeZ ] = gsmConsentRaw.split("T");
 
         const result = await this.api.post({
             ModelType: 3,
             CurrAccCode: nebimCustomer.CurrAccCode,
-            Communications: communicationsToSend
+            Communications: communicationType === "gsm" ? [{
+                CommunicationTypeCode: this.tenant.nebim.customer.phoneType,
+                CommAddress: customer.phone,
+                OptInOptOutStatusIntegrator: (this.tenant.nebim.customer.confirmationFormTypeCode && this.tenant.nebim.customer.confirmationFormStatusCode) ? {
+                    Call: true,
+                    CompanyBrandCode: "",
+                    ConfirmationFormStatusCode: this.tenant.nebim.customer.confirmationFormStatusCode,
+                    ConfirmationFormTypeCode: this.tenant.nebim.customer.confirmationFormTypeCode,
+                    ConsentDate: gsmConsentDate,
+                    ConsentTime: gsmConsentTimeZ.replace("Z", "").split(".")[0],
+                    ConsentSource: this.tenant.nebim.customer.consentSource,
+                    Email: false,
+                    FormNumber: "digital",
+                    OptIn: gsmOptIn,
+                    RecipientType: 1,
+                    SMS: true
+                } : {}
+            }] : [{
+                CommunicationTypeCode: "3",
+                CommAddress: customer.email,
+                OptInOptOutStatusIntegrator: (this.tenant.nebim.customer.confirmationFormTypeCode && this.tenant.nebim.customer.confirmationFormStatusCode) ? {
+                    Call: false,
+                    CompanyBrandCode: "",
+                    ConfirmationFormStatusCode: this.tenant.nebim.customer.confirmationFormStatusCode,
+                    ConfirmationFormTypeCode: this.tenant.nebim.customer.confirmationFormTypeCode,
+                    ConsentDate: emailConsentDate,
+                    ConsentTime: emailConsentTimeZ.replace("Z", "").split(".")[0],
+                    ConsentSource: this.tenant.nebim.customer.consentSource,
+                    Email: true,
+                    FormNumber: "digital",
+                    OptIn: emailOptIn,
+                    RecipientType: 1,
+                    SMS: false
+                } : {}
+            }]
         });
 
         return {
             CustomerCode: result.CurrAccCode
         };
-    }
-
-    #hasConfirmationForm = () => {
-        return this.tenant.nebim.customer.confirmationFormTypeCode && this.tenant.nebim.customer.confirmationFormStatusCode;
-    }
-
-    #splitConsentDateTime = (iso) => {
-        const raw = iso ?? new Date().toISOString();
-        const [date, timeZ] = raw.split("T");
-        return [date, (timeZ ?? "").replace("Z", "").split(".")[0]];
-    }
-
-    #buildOptInOptOutStatusIntegrator = ({ consentDate, consentTime, optIn, isEmail }) => {
-        if (!this.#hasConfirmationForm()) return {};
-
-        return {
-            Call: !isEmail,
-            CompanyBrandCode: "",
-            ConfirmationFormStatusCode: this.tenant.nebim.customer.confirmationFormStatusCode,
-            ConfirmationFormTypeCode: this.tenant.nebim.customer.confirmationFormTypeCode,
-            ConsentDate: consentDate,
-            ConsentTime: consentTime,
-            ConsentSource: this.tenant.nebim.customer.consentSource,
-            Email: isEmail,
-            FormNumber: "digital",
-            OptIn: optIn,
-            RecipientType: 1,
-            SMS: !isEmail
-        };
-    }
-
-    #buildCommunications = (customer) => {
-        const nowIso = new Date().toISOString();
-        const [emailConsentDate, emailConsentTime] = this.#splitConsentDateTime(customer?.consents?.email?.date ?? nowIso);
-        const [gsmConsentDate, gsmConsentTime] = this.#splitConsentDateTime(customer?.consents?.gsm?.date ?? nowIso);
-
-        return [
-            {
-                CommunicationTypeCode: "3",
-                CommAddress: customer.email,
-                OptInOptOutStatusIntegrator: this.#buildOptInOptOutStatusIntegrator({
-                    consentDate: emailConsentDate,
-                    consentTime: emailConsentTime,
-                    optIn: customer?.consents?.email?.is_opt_in ?? false,
-                    isEmail: true
-                })
-            },
-            {
-                CommunicationTypeCode: this.tenant.nebim.customer.phoneType,
-                CommAddress: customer.phone,
-                OptInOptOutStatusIntegrator: this.#buildOptInOptOutStatusIntegrator({
-                    consentDate: gsmConsentDate,
-                    consentTime: gsmConsentTime,
-                    optIn: customer?.consents?.gsm?.is_opt_in ?? false,
-                    isEmail: false
-                })
-            }
-        ];
     }
 
     #updateCustomer = async (nebimCustomer, { address, is_receiver_not_customer }) => {
