@@ -212,7 +212,7 @@ export default class NebimCustomerClass extends CoreClass {
             CurrAccCode: nebimCustomer.CurrAccCode,
             Communications: communicationType === "gsm" ? [{
                 CommunicationTypeCode: this.tenant.nebim.customer.phoneType,
-                CommunicationID: nebimCustomer.Communications.filter(x => x.CommunicationTypeCode === this.tenant.nebim.customer.phoneType)[0].CommunicationID,
+                CommunicationID: nebimCustomer.Communications.filter(x => x.CommunicationTypeCode === this.tenant.nebim.customer.phoneType && x.CommAddress == customer.phone)[0].CommunicationID,
                 OptInOptOutStatusIntegrator: (this.tenant.nebim.customer.confirmationFormTypeCode && this.tenant.nebim.customer.confirmationFormStatusCode) ? {
                     Call: true,
                     CompanyBrandCode: "",
@@ -229,7 +229,7 @@ export default class NebimCustomerClass extends CoreClass {
                 } : {}
             }] : [{
                 CommunicationTypeCode: "3",
-                CommunicationID: nebimCustomer.Communications.filter(x => x.CommunicationTypeCode === "3")[0].CommunicationID,
+                CommunicationID: nebimCustomer.Communications.filter(x => x.CommunicationTypeCode === "3" && x.CommAddress == customer.email)[0].CommunicationID,
                 OptInOptOutStatusIntegrator: (this.tenant.nebim.customer.confirmationFormTypeCode && this.tenant.nebim.customer.confirmationFormStatusCode) ? {
                     Call: false,
                     CompanyBrandCode: "",
