@@ -502,7 +502,13 @@ describe('NebimCustomerBusiness', () => {
 
     it('should post email consent as Communications[0]', async () => {
       mockApi.runProcReturnSingle.mockResolvedValue({ CustomerCode: 'CUST001' });
-      mockApi.getModel.mockResolvedValue({ CurrAccCode: 'CUST001' });
+      mockApi.getModel.mockResolvedValue({
+        CurrAccCode: 'CUST001',
+        Communications: [
+          { CommunicationTypeCode: '1', CommunicationID: 'phone-id' },
+          { CommunicationTypeCode: '3', CommunicationID: 'email-id' },
+        ],
+      });
       mockApi.post.mockResolvedValue({ CurrAccCode: 'CUST001' });
 
       const result = await business.updateConsent(customer, 'email');
@@ -513,7 +519,7 @@ describe('NebimCustomerBusiness', () => {
         Communications: [
           expect.objectContaining({
             CommunicationTypeCode: '3',
-            CommAddress: 'test@example.com',
+            CommunicationID: 'email-id',
             OptInOptOutStatusIntegrator: expect.objectContaining({
               Email: true,
               SMS: false,
@@ -531,7 +537,13 @@ describe('NebimCustomerBusiness', () => {
 
     it('should post phone consent as Communications[1] from the built array', async () => {
       mockApi.runProcReturnSingle.mockResolvedValue({ CustomerCode: 'CUST001' });
-      mockApi.getModel.mockResolvedValue({ CurrAccCode: 'CUST001' });
+      mockApi.getModel.mockResolvedValue({
+        CurrAccCode: 'CUST001',
+        Communications: [
+          { CommunicationTypeCode: '1', CommunicationID: 'phone-id' },
+          { CommunicationTypeCode: '3', CommunicationID: 'email-id' },
+        ],
+      });
       mockApi.post.mockResolvedValue({ CurrAccCode: 'CUST001' });
 
       await business.updateConsent(customer, 'gsm');
@@ -542,7 +554,7 @@ describe('NebimCustomerBusiness', () => {
         Communications: [
           expect.objectContaining({
             CommunicationTypeCode: '1',
-            CommAddress: '5551234567',
+            CommunicationID: 'phone-id',
             OptInOptOutStatusIntegrator: expect.objectContaining({
               Email: false,
               SMS: true,
