@@ -149,12 +149,16 @@ class ProductSyncedBatchModel {
       createProductSkippedTotal: data.numbers?.createProductSkippedTotal || null,
       createProductSkippedAlreadySynced: data.numbers?.createProductSkippedAlreadySynced || null,
       createProductSkippedFailed: data.numbers?.createProductSkippedFailed || null,
-      isErrorLogExistsForBatch: data.isErrorLogExistsForThisBatch || null,
       traceId: data.traceId,
     };
 
     if (data.tenant) {
       normalized.tenantId = typeof data.tenant === 'object' ? data.tenant._id || data.tenant.id : data.tenant;
+    }
+
+    // Boolean field, cannot be null — omit when unset so Prisma uses @default(false)
+    if (data.isErrorLogExistsForThisBatch !== undefined && data.isErrorLogExistsForThisBatch !== null) {
+      normalized.isErrorLogExistsForBatch = Boolean(data.isErrorLogExistsForThisBatch);
     }
 
     return normalized;
