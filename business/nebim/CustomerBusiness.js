@@ -19,7 +19,8 @@ export default class NebimCustomerClass extends CoreClass {
     fetchCustomer = async ({ email, phone }) => {
         const shortInfo = await this.api.runProcReturnSingle(this.tenant.nebim.procNames.customer.check, {
             "Email": email ?? "",
-            "Phone": phone ?? ""
+            "Phone": phone ?? "",
+            "PhoneType": this.tenant.nebim.customer.phoneType
         });
 
         if (!shortInfo.CustomerCode) return null;
