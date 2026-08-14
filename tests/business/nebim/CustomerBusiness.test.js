@@ -505,8 +505,8 @@ describe('NebimCustomerBusiness', () => {
       mockApi.getModel.mockResolvedValue({
         CurrAccCode: 'CUST001',
         Communications: [
-          { CommunicationTypeCode: '1', CommunicationID: 'phone-id' },
-          { CommunicationTypeCode: '3', CommunicationID: 'email-id' },
+          { CommunicationTypeCode: '1', CommunicationID: 'phone-id', CommAddress: '5551234567' },
+          { CommunicationTypeCode: '3', CommunicationID: 'email-id', CommAddress: 'test@example.com' },
         ],
       });
       mockApi.post.mockResolvedValue({ CurrAccCode: 'CUST001' });
@@ -540,8 +540,8 @@ describe('NebimCustomerBusiness', () => {
       mockApi.getModel.mockResolvedValue({
         CurrAccCode: 'CUST001',
         Communications: [
-          { CommunicationTypeCode: '1', CommunicationID: 'phone-id' },
-          { CommunicationTypeCode: '3', CommunicationID: 'email-id' },
+          { CommunicationTypeCode: '1', CommunicationID: 'phone-id', CommAddress: '5551234567' },
+          { CommunicationTypeCode: '3', CommunicationID: 'email-id', CommAddress: 'test@example.com' },
         ],
       });
       mockApi.post.mockResolvedValue({ CurrAccCode: 'CUST001' });
