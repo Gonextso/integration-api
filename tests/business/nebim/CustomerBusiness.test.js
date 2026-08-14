@@ -284,6 +284,29 @@ describe('NebimCustomerBusiness', () => {
       const result = await business.syncCustomerFromOrder(order);
 
       expect(mockApi.post).toHaveBeenCalled();
+      const posted = mockApi.post.mock.calls[0][0];
+      expect(posted.Communications).toHaveLength(2);
+      expect(posted.Communications[0]).toMatchObject({
+        CommunicationTypeCode: '3',
+        CommAddress: 'new@example.com',
+        OptInOptOutStatusIntegrator: expect.objectContaining({
+          Email: true,
+          SMS: false,
+          OptIn: true,
+          ConsentDate: '2024-01-01',
+        }),
+      });
+      expect(posted.Communications[1]).toMatchObject({
+        CommunicationTypeCode: '1',
+        CommAddress: '5551234567',
+        OptInOptOutStatusIntegrator: expect.objectContaining({
+          Email: false,
+          SMS: true,
+          Call: true,
+          OptIn: true,
+          ConsentDate: '2024-01-01',
+        }),
+      });
       expect(result).toHaveProperty('CustomerCode');
       expect(result).toHaveProperty('ShippingPostalAddressID');
     });
@@ -458,6 +481,89 @@ describe('NebimCustomerBusiness', () => {
       await expect(business.createSetupTestCustomer()).rejects.toThrow(
         'Address codes cache is empty',
       );
+    });
+  });
+
+  describe('updateConsent', () => {
+    const customer = {
+      email: 'test@example.com',
+      phone: '5551234567',
+      consents: {
+        email: {
+          date: '2024-02-01T12:30:00Z',
+          is_opt_in: false,
+        },
+        gsm: {
+          date: '2024-02-02T08:15:00.123Z',
+          is_opt_in: true,
+        },
+      },
+    };
+
+    it('should post email consent as Communications[0]', async () => {
+      mockApi.runProcReturnSingle.mockResolvedValue({ CustomerCode: 'CUST001' });
+      mockApi.getModel.mockResolvedValue({ CurrAccCode: 'CUST001' });
+      mockApi.post.mockResolvedValue({ CurrAccCode: 'CUST001' });
+
+      const result = await business.updateConsent(customer, 'email');
+
+      expect(mockApi.post).toHaveBeenCalledWith({
+        ModelType: 3,
+        CurrAccCode: 'CUST001',
+        Communications: [
+          expect.objectContaining({
+            CommunicationTypeCode: '3',
+            CommAddress: 'test@example.com',
+            OptInOptOutStatusIntegrator: expect.objectContaining({
+              Email: true,
+              SMS: false,
+              Call: false,
+              OptIn: false,
+              ConsentDate: '2024-02-01',
+              ConsentTime: '12:30:00',
+              ConsentSource: 'digital',
+            }),
+          }),
+        ],
+      });
+      expect(result).toEqual({ CustomerCode: 'CUST001' });
+    });
+
+    it('should post phone consent as Communications[1] from the built array', async () => {
+      mockApi.runProcReturnSingle.mockResolvedValue({ CustomerCode: 'CUST001' });
+      mockApi.getModel.mockResolvedValue({ CurrAccCode: 'CUST001' });
+      mockApi.post.mockResolvedValue({ CurrAccCode: 'CUST001' });
+
+      await business.updateConsent(customer, 'gsm');
+
+      expect(mockApi.post).toHaveBeenCalledWith({
+        ModelType: 3,
+        CurrAccCode: 'CUST001',
+        Communications: [
+          expect.objectContaining({
+            CommunicationTypeCode: '1',
+            CommAddress: '5551234567',
+            OptInOptOutStatusIntegrator: expect.objectContaining({
+              Email: false,
+              SMS: true,
+              Call: true,
+              OptIn: true,
+              ConsentDate: '2024-02-02',
+              ConsentTime: '08:15:00',
+              ConsentSource: 'digital',
+            }),
+          }),
+        ],
+      });
+    });
+
+    it('should return null when customer is not in Nebim', async () => {
+      mockApi.runProcReturnSingle.mockResolvedValue({});
+
+      const result = await business.updateConsent(customer, 'email');
+
+      expect(mockApi.post).not.toHaveBeenCalled();
+      expect(result).toBeNull();
     });
   });
 });
