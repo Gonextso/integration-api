@@ -6,6 +6,9 @@ const mockCustomerBusiness = {
 };
 
 const mockCustomerBusinessClass = jest.fn().mockImplementation(() => mockCustomerBusiness);
+const mockConsentSyncBusiness = {
+  sync: jest.fn(),
+};
 
 const mockCoreController = {
   response: jest.fn(),
@@ -13,6 +16,10 @@ const mockCoreController = {
 
 await jest.unstable_mockModule('../../business/nebim/CustomerBusiness.js', () => ({
   default: mockCustomerBusinessClass,
+}));
+
+await jest.unstable_mockModule('../../business/CustomerConsentSyncBusiness.js', () => ({
+  default: jest.fn().mockImplementation(() => mockConsentSyncBusiness),
 }));
 
 await jest.unstable_mockModule('../../core/CoreControler.js', () => ({
@@ -68,7 +75,10 @@ describe('ShopifyNebimCustomerController', () => {
       await ShopifyNebimCustomerController.updateConsent(mockReq, mockRes);
 
       expect(mockCustomerBusinessClass).toHaveBeenCalledWith(mockTenant);
-      expect(mockCustomerBusiness.updateConsent).toHaveBeenCalledWith(mockReq.body, 'email');
+      expect(mockCustomerBusiness.updateConsent).toHaveBeenCalledWith(mockReq.body, 'email', {
+        sourceEventId: null,
+        sourcePayloadRaw: mockReq.body,
+      });
       expect(mockCoreController.response).toHaveBeenCalledWith(mockRes, {
         status: HttpStatusCodes.SUCCESS,
         content: { CustomerCode: 'CUST001' },

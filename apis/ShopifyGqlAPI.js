@@ -22,6 +22,11 @@ export default class ShopifyGqlAPI extends CoreAPI {
                 }
             });
 
+            // Keep the original HTTP error intact for callers that persist the
+            // target response in the consent audit trail.
+            if (response instanceof Error) throw response;
+            if (!response?.data) throw new Error('Shopify returned an empty GraphQL response');
+
             const data = response.data;
             const errors = data?.errors;
             const isThrottled = Array.isArray(errors) && errors.some(err => err?.extensions?.code === "THROTTLED");
