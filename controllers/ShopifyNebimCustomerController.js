@@ -1,6 +1,7 @@
 import CoreController from "../core/CoreControler.js";
 import HttpStatusCodes from "../enums/HttpStatusCodes.js";
 import NebimCustomerBusiness from "../business/nebim/CustomerBusiness.js";
+import CustomerConsentSyncBusiness from "../business/CustomerConsentSyncBusiness.js";
 
 export default new class ShopifyNebimCustomerController extends CoreController {
     constructor() {
@@ -27,7 +28,10 @@ export default new class ShopifyNebimCustomerController extends CoreController {
         }
 
         const customerBusiness = new NebimCustomerBusiness(req.tenant);
-        const result = await customerBusiness.updateConsent(customer, communitaionType);
+        const result = await customerBusiness.updateConsent(customer, communitaionType, {
+            sourceEventId: req.body?.audit?.sourceEventId || req.get?.("x-source-event-id") || null,
+            sourcePayloadRaw: req.body?.audit?.sourcePayload || customer,
+        });
 
         if (!result) {
             return this.response(res, {
@@ -47,6 +51,16 @@ export default new class ShopifyNebimCustomerController extends CoreController {
         return this.response(res, {
             status: HttpStatusCodes.SUCCESS,
             content: result
+        });
+    }
+
+    syncConsents = async (req, res) => {
+        const business = new CustomerConsentSyncBusiness(req.tenant);
+        const summary = await business.sync(req.startDate);
+
+        return this.response(res, {
+            status: HttpStatusCodes.SUCCESS,
+            content: summary,
         });
     }
 }
