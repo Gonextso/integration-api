@@ -116,13 +116,20 @@ export default class NebimV3IntegratorAPI extends CoreAPI {
             "Content-Type": "application/json"
         });
 
-        if (data instanceof Error) this.throws(data.message);
+        // Preserve the HTTP error (including response status/body) so legal
+        // consent audit records can store the target system's raw response.
+        if (data instanceof Error) throw data;
 
         if (!data || typeof data !== "object") {
             this.throws("Nebim V3 Integrator returned invalid response");
         }
 
-        if (data["StatusCode"] >= HttpStatusCodes.BAD_REQUEST.code) this.throws(data["ExceptionMessage"]);
+        if (data["StatusCode"] >= HttpStatusCodes.BAD_REQUEST.code) {
+            const error = new Error(data["ExceptionMessage"] || "Nebim V3 Integrator request failed");
+            error.data = data;
+            error.status = data["StatusCode"];
+            throw error;
+        }
 
         return data;
     }

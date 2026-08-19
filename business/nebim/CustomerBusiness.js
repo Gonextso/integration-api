@@ -2,6 +2,7 @@ import CoreClass from "../../core/CoreClass.js";
 import NebimV3IntegratorAPI from "../../apis/NebimV3IntegratorAPI.js";
 import NebimCache from "../../cache/NebimCache.js";
 import CacheFields from "../../enums/CacheFields.js";
+import ConsentAuditBusiness from "../ConsentAuditBusiness.js";
 
 const SETUP_TEST_EMAIL = "support@gonextso.com";
 const SETUP_TEST_PHONE = "05555555555";
@@ -193,8 +194,44 @@ export default class NebimCustomerClass extends CoreClass {
         };
     }
 
-    updateConsent = async (customer, communicationType) => {
-        const nebimCustomer = await this.fetchCustomer(customer);
+    updateConsent = async (customer, communicationType, auditContext = null) => {
+        const audit = auditContext ? new ConsentAuditBusiness(this.tenant, {
+            sourceSystem: "SHOPIFY",
+            targetSystem: "NEBIM",
+            triggerType: "WEBHOOK",
+            ...auditContext,
+        }) : null;
+
+        const findRequest = {
+            Email: customer.email ?? "",
+            Phone: customer.phone ?? "",
+            PhoneType: this.tenant.nebim.customer.phoneType,
+        };
+        const shortInfo = audit
+            ? await audit.execute(
+                {
+                    operation: "FIND_CUSTOMER",
+                    channel: communicationType === "gsm" ? "SMS" : "EMAIL",
+                    sourceCustomerRef: customer.email || customer.phone || null,
+                },
+                { ProcName: this.tenant.nebim.procNames.customer.check, ...findRequest },
+                () => this.api.runProcReturnSingle(this.tenant.nebim.procNames.customer.check, findRequest),
+            )
+            : null;
+        const nebimCustomer = audit
+            ? (shortInfo?.CustomerCode
+                ? await audit.execute(
+                    {
+                        operation: "GET_CUSTOMER_MODEL",
+                        channel: communicationType === "gsm" ? "SMS" : "EMAIL",
+                        sourceCustomerRef: customer.email || customer.phone || null,
+                        targetCustomerRef: shortInfo.CustomerCode,
+                    },
+                    { ModelType: 3, CurrAccCode: shortInfo.CustomerCode },
+                    () => this.api.getModel("customer", shortInfo.CustomerCode),
+                )
+                : null)
+            : await this.fetchCustomer(customer);
 
         if (!nebimCustomer) return null;
 
@@ -208,7 +245,7 @@ export default class NebimCustomerClass extends CoreClass {
         const [ emailConsentDate, emailConsentTimeZ ] = (emailConsentRaw ?? "").split("T");
         const [ gsmConsentDate, gsmConsentTimeZ ] = (gsmConsentRaw ?? "").split("T");
 
-        const result = await this.api.post({
+        const request = {
             ModelType: 3,
             CurrAccCode: nebimCustomer.CurrAccCode,
             Communications: communicationType === "gsm" ? [{
@@ -246,7 +283,23 @@ export default class NebimCustomerClass extends CoreClass {
                     SMS: false
                 } : {}
             }]
-        });
+        };
+        const result = audit
+            ? await audit.execute(
+                {
+                    operation: communicationType === "gsm" ? "UPDATE_SMS_CONSENT" : "UPDATE_EMAIL_CONSENT",
+                    channel: communicationType === "gsm" ? "SMS" : "EMAIL",
+                    sourceCustomerRef: customer.email || customer.phone || null,
+                    targetCustomerRef: nebimCustomer.CurrAccCode,
+                    consentState: communicationType === "gsm"
+                        ? (gsmOptIn ? "SUBSCRIBED" : "UNSUBSCRIBED")
+                        : (emailOptIn ? "SUBSCRIBED" : "UNSUBSCRIBED"),
+                    consentUpdatedAt: consentRaw,
+                },
+                request,
+                () => this.api.post(request),
+            )
+            : await this.api.post(request);
 
         return {
             CustomerCode: result.CurrAccCode

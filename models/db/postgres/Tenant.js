@@ -106,6 +106,7 @@ class TenantModel {
             procGetStoreInfo: 'sp_GO_GetStoreInfo',
             procGetStoreInfo: 'sp_GO_GetStoreInfo',
             procCustomerCheck: 'sp_GO_GetCustomer',
+            procCustomerConcents: 'sp_GO_GetCustomerConcents',
             procOrderStatus: 'sp_GO_OrderStatus',
             procDefaultsAddressCodes: 'sp_GO_GetAddressList',
           },
@@ -151,6 +152,9 @@ class TenantModel {
             nebimOrderStatusInterval: '0 * * * *',
             nebimOrderStatusStartDate: moment().subtract(1, 'days').toDate(),
             nebimOrderStatusIsActive: false,
+            nebimCustomerConcentsInterval: '0 0 * * *',
+            nebimCustomerConcentsStartDate: moment().subtract(1, 'days').toDate(),
+            nebimCustomerConcentsIsActive: true,
             nebimProductFindInStoreInterval: '*/30 * * * *',
             nebimProductFindInStoreStartDate: moment().subtract(30, 'minutes').toDate(),
             nebimProductFindInStoreIsActive: false,
@@ -434,6 +438,13 @@ class TenantModel {
             contentStartDate: tenant.schedules?.nebimProductMarketContentStartDate?.toISOString() || null,
           },
         },
+        customer: {
+          concents: {
+            interval: tenant.schedules?.nebimCustomerConcentsInterval || '0 0 * * *',
+            startDate: tenant.schedules?.nebimCustomerConcentsStartDate?.toISOString() || null,
+            isActive: tenant.schedules?.nebimCustomerConcentsIsActive ?? true,
+          },
+        },
         order: {
           create_and_cancel: {
             interval: tenant.schedules?.nebimOrderCreateCancelInterval || '*/30 * * * *',
@@ -510,6 +521,7 @@ class TenantModel {
         },
         customer: {
           check: tenant.nebim?.procCustomerCheck || 'sp_GO_GetCustomer',
+          concents: tenant.nebim?.procCustomerConcents || 'sp_GO_GetCustomerConcents',
         },
         order: {
           status: tenant.nebim?.procOrderStatus || 'sp_GO_OrderStatus',
@@ -536,4 +548,3 @@ class TenantModel {
 
 // Export singleton instance
 export default new TenantModel();
-
