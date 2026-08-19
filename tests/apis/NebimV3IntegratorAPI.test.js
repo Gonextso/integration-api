@@ -370,6 +370,38 @@ describe('NebimV3IntegratorAPI', () => {
       );
       expect(result).toEqual({ result: 'success' });
     });
+
+    it('should convert null parameters to empty strings', async () => {
+      const mockToken = 'token';
+      mockCache.get.mockResolvedValue({
+        token: mockToken,
+        expiryDate: new Date(Date.now() + 10000),
+      });
+      mockHttpRequest.post.mockResolvedValue({
+        data: { result: 'success' },
+      });
+
+      await api.runProc('sp_GO_GetProductInventory', {
+        Date: '2026-08-19T13:55:00.000Z',
+        BarcodeTypeCode: '1',
+        OrderStoreCode: null,
+        ResponsibiltyAreaCode: 'WEB',
+        IncludeBlocked: false,
+      });
+
+      expect(mockHttpRequest.post).toHaveBeenCalledWith(
+        'https://test.nebim.com/IntegratorService/RunProc',
+        {
+          ProcName: 'sp_GO_GetProductInventory',
+          Date: '2026-08-19T13:55:00.000Z',
+          BarcodeTypeCode: '1',
+          OrderStoreCode: '',
+          ResponsibiltyAreaCode: 'WEB',
+          IncludeBlocked: false,
+        },
+        expect.any(Object)
+      );
+    });
   });
 
   describe('runProcReturnSingle', () => {
@@ -402,6 +434,32 @@ describe('NebimV3IntegratorAPI', () => {
         }
       );
       expect(result).toEqual({ result: 'single' });
+    });
+
+    it('should convert null parameters to empty strings', async () => {
+      const mockToken = 'token';
+      mockCache.get.mockResolvedValue({
+        token: mockToken,
+        expiryDate: new Date(Date.now() + 10000),
+      });
+      mockHttpRequest.post.mockResolvedValue({
+        data: { result: 'single' },
+      });
+
+      await api.runProcReturnSingle('TestProc', {
+        OptionalCode: null,
+        Count: 0,
+      });
+
+      expect(mockHttpRequest.post).toHaveBeenCalledWith(
+        'https://test.nebim.com/IntegratorService/RunProcReturnSingle',
+        {
+          ProcName: 'TestProc',
+          OptionalCode: '',
+          Count: 0,
+        },
+        expect.any(Object)
+      );
     });
 
     it('should return empty object when data is null', async () => {
@@ -587,4 +645,3 @@ describe('NebimV3IntegratorAPI', () => {
     });
   });
 });
-
