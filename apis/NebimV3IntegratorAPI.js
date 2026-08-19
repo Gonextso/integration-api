@@ -7,6 +7,10 @@ import {
     friendlyNebimError,
 } from "../helpers/NebimErrorHelper.js";
 
+const normalizeRunProcParameters = parameters => Object.fromEntries(
+    Object.entries(parameters ?? {}).map(([key, value]) => [key, value === null ? "" : value])
+);
+
 export default class NebimV3IntegratorAPI extends CoreAPI {
     constructor(tenant) {
         super(tenant);
@@ -126,7 +130,7 @@ export default class NebimV3IntegratorAPI extends CoreAPI {
     runProc = async (procName, parameters) => await this.connectionProvider(async headers => {
         const response = await this.httpRequest.post(`${this.tenant.nebim.host}/IntegratorService/RunProc`, {
             "ProcName": procName,
-            ...parameters
+            ...normalizeRunProcParameters(parameters)
         }, {
             headers: headers
         });
@@ -138,7 +142,7 @@ export default class NebimV3IntegratorAPI extends CoreAPI {
     runProcReturnSingle = async (procName, parameters) => await this.connectionProvider(async headers => {
         const response = await this.httpRequest.post(`${this.tenant.nebim.host}/IntegratorService/RunProcReturnSingle`, {
             "ProcName": procName,
-            ...parameters
+            ...normalizeRunProcParameters(parameters)
         }, {
             headers: headers
         });
