@@ -1,9 +1,43 @@
 import CoreAPI from "../core/CoreAPI.js";
+import ShopifyTokenService from "../helpers/ShopifyTokenService.js";
 
 export default class ShopifyGqlAPI extends CoreAPI {
     constructor(tenant) {
         super(tenant);
         this.config = tenant.shopify;
+    }
+
+    // Resolved per call (not once per request) so long-running syncs survive token rotation.
+    accessToken = async (rejectedToken) => {
+        const tenantId = this.tenant?.id ?? this.tenant?._id;
+        if (tenantId && this.config?.name) {
+            const token = await ShopifyTokenService.getAccessToken(String(tenantId), `${this.config.name}.myshopify.com`, { rejectedToken });
+            if (token) return token;
+        }
+
+        return this.config.decyrptedApiKey ?? this.config.decryptedApiKey;
+    }
+
+    // POSTs to the Admin GraphQL endpoint; on 401 retries once with a refreshed token.
+    postGraphql = async (query, variables) => {
+        const url = `https://${this.config.name}.myshopify.com/admin/api/${process.env.SHOPIFY_API_VERSION}/graphql.json`;
+        const send = token => this.httpRequest.gpost(url, { query, variables }, {
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Shopify-Access-Token': token
+            }
+        });
+
+        const token = await this.accessToken();
+        try {
+            return await send(token);
+        } catch (error) {
+            if (error?.response?.status !== 401) throw error;
+
+            const retryToken = await this.accessToken(token);
+            if (!retryToken || retryToken === token) throw error;
+            return send(retryToken);
+        }
     }
 
     query = async (query, variables) => {
@@ -12,15 +46,7 @@ export default class ShopifyGqlAPI extends CoreAPI {
         const MAX_DELAY_MS = 20000;
 
         for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-            const response = await this.httpRequest.gpost(`https://${this.config.name}.myshopify.com/admin/api/${process.env.SHOPIFY_API_VERSION}/graphql.json`, {
-                query,
-                variables
-            }, {
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-Shopify-Access-Token': this.config.decyrptedApiKey
-                }
-            });
+            const response = await this.postGraphql(query, variables);
 
             // Keep the original HTTP error intact for callers that persist the
             // target response in the consent audit trail.
